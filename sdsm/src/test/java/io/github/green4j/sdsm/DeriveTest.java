@@ -3,12 +3,12 @@ package io.github.green4j.sdsm;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Timeout;
 
 import java.math.BigDecimal;
 import java.util.Map;
 import java.util.Random;
 import java.util.concurrent.CompletionException;
-import java.util.concurrent.TimeUnit;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -364,12 +364,12 @@ class DeriveTest {
      * A child coming or going costs its own summand, not a recount of its siblings.
      */
     @Test
+    @Timeout(1)
     void shouldPayForAChildWhatItBrings() {
         derive(green, backlog);
         derive(cluster, backlog);
         final int children = 20_000;
 
-        final long started = System.nanoTime();
         final long[] ids = structure.submit(() -> {
             final long[] made = new long[children];
             for (int i = 0; i < children; i++) {
@@ -388,11 +388,9 @@ class DeriveTest {
                 structure.remove(ids[i]);
             }
         }).join();
-        final long elapsed = System.nanoTime() - started;
 
         assertEquals((long) children / 4, value(cluster, "backlog"));
         assertEquals((long) children / 4 + 1, value(green, "backlog.total"));
-        assertTrue(elapsed < TimeUnit.MILLISECONDS.toNanos(1_000L), elapsed / 1_000_000 + " ms");
     }
 
     /**
@@ -400,12 +398,12 @@ class DeriveTest {
      * child's value did, however many siblings it has.
      */
     @Test
+    @Timeout(1)
     void shouldPayForADerivedChildWhatItChanged() {
         final int own = structure.propertyKeys().idOf("own");
         derive(green, rate);
         final int children = 20_000;
 
-        final long started = System.nanoTime();
         structure.run(() -> {
             final long[] made = new long[children];
             for (int i = 0; i < children; i++) {
@@ -418,11 +416,9 @@ class DeriveTest {
                 structure.setLong(made[i], own, 2L);
             }
         }).join();
-        final long elapsed = System.nanoTime() - started;
 
         assertEquals(2L * children, value(green, "rate"));
         assertEquals((long) children, value(green, "rate.known"));
-        assertTrue(elapsed < TimeUnit.MILLISECONDS.toNanos(1_000L), elapsed / 1_000_000 + " ms");
     }
 
     private Node stream(final Node release, final String name) {

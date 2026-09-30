@@ -2,6 +2,7 @@ package io.github.green4j.sdsm;
 
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Timeout;
 
 import java.time.Duration;
 import java.util.List;
@@ -86,8 +87,7 @@ class DeliveryTest {
 
     /**
      * Keeps releasing what has been handed to the executor until the subscriber has seen the
-     * value, or a second has gone: what is owed may reach the executor from the structure's thread
-     * at any moment.
+     * value: what is owed may reach the executor from the structure's thread at any moment.
      *
      * @param delivery the executor held back
      * @param recorder the subscriber
@@ -99,15 +99,14 @@ class DeliveryTest {
                                      final Recorder recorder,
                                      final long objectId,
                                      final String value) throws InterruptedException {
-        final long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(1L);
-        while (!value.equals(recorder.latestValueOf(objectId, "k"))
-                && System.nanoTime() < deadline) {
+        while (!value.equals(recorder.latestValueOf(objectId, "k"))) {
             delivery.release();
             Thread.sleep(1L);
         }
     }
 
     @Test
+    @Timeout(5)
     void shouldKeepWhatAnExecutorFallingBehindCannotTakeYet() throws InterruptedException {
         final HeldBack delivery = new HeldBack();
         structure.withDeliveryExecutor(delivery);

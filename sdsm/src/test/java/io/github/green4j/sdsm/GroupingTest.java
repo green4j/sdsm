@@ -3,11 +3,11 @@ package io.github.green4j.sdsm;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Timeout;
 
 import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.CompletionException;
-import java.util.concurrent.TimeUnit;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -283,6 +283,7 @@ class GroupingTest {
      * again: a round of writes to a group of many costs what the writes cost.
      */
     @Test
+    @Timeout(2)
     void shouldFoldAMembersWriteWithoutCountingTheOthersAgain() {
         final int members = 20_000;
         final long[] ids = new long[members];
@@ -296,17 +297,14 @@ class GroupingTest {
                 structure.submit(() -> structure.groupBy("herds", "herd", "node[type=member]", "family")).join();
         structure.run(() -> structure.deriveEach(herds.id(), rate, Fold.SUM, Over.members("rate"))).join();
 
-        final long started = System.nanoTime();
         structure.run(() -> {
             for (int i = 0; i < members; i++) {
                 structure.setLong(ids[i], rate, i);
             }
         }).join();
-        final long elapsed = System.nanoTime() - started;
 
         final long herd = structure.groups(herds.id()).join()[0];
         assertEquals((long) members * (members - 1) / 2, structure.snapshotObject(herd).join().get("rate"));
-        assertTrue(elapsed < TimeUnit.SECONDS.toNanos(2L), elapsed / 1_000_000 + " ms");
     }
 
     /**

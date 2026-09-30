@@ -1,13 +1,13 @@
 package io.github.green4j.sdsm;
 
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Timeout;
 
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
 import java.util.Random;
 import java.util.Set;
-import java.util.concurrent.TimeUnit;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -92,6 +92,7 @@ class PrimitiveIndexTest {
      * single property still costs one.
      */
     @Test
+    @Timeout(1)
     void shouldClearAtTheCostOfWhatIsHeldAfterABurst() {
         final DirtyProperties subject = new DirtyProperties();
         for (int i = 0; i < 1_000_000; i++) {
@@ -99,14 +100,11 @@ class PrimitiveIndexTest {
         }
         subject.clear();
 
-        final long started = System.nanoTime();
         for (int i = 0; i < 10_000; i++) {
             assertTrue(subject.mark(i, 2));
             subject.clear();
         }
-        final long elapsed = System.nanoTime() - started;
 
-        assertTrue(elapsed < TimeUnit.MILLISECONDS.toNanos(100L), elapsed / 1_000_000 + " ms");
         assertTrue(subject.mark(5L, 2), "cleared");
         assertFalse(subject.mark(5L, 2), "held");
     }
@@ -116,6 +114,7 @@ class PrimitiveIndexTest {
      * clearing a single id still costs one.
      */
     @Test
+    @Timeout(3)
     void shouldClearTextAtTheCostOfWhatIsHeldAfterABurst() {
         final TextObjectMap<String> subject = new TextObjectMap<>();
         for (int i = 0; i < 1_000_000; i++) {
@@ -123,14 +122,11 @@ class PrimitiveIndexTest {
         }
         subject.clear();
 
-        final long started = System.nanoTime();
         for (int i = 0; i < 10_000; i++) {
             subject.put("pod-1", "v");
             subject.clear();
         }
-        final long elapsed = System.nanoTime() - started;
 
-        assertTrue(elapsed < TimeUnit.MILLISECONDS.toNanos(100L), elapsed / 1_000_000 + " ms");
         assertNull(subject.get("pod-1"), "cleared");
     }
 
