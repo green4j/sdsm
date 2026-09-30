@@ -96,6 +96,11 @@ class DemandTest {
         }
 
         private void poll(final int round) {
+            look(round);
+            feed.complete(AREA);
+        }
+
+        private void look(final int round) {
             for (final String id : ids) {
                 if (wanted.getOrDefault(id, DetailLevel.FINE) == DetailLevel.OFF) {
                     continue;
@@ -103,7 +108,6 @@ class DemandTest {
                 observations++;
                 feed.observed(new Pod(id, "v" + round));
             }
-            feed.complete(AREA);
         }
     }
 
@@ -163,6 +167,27 @@ class DemandTest {
         source.poll(3);
         Await.until(() -> source.observations == 8);
         assertEquals(3, count("node[type=pod]"));
+    }
+
+    /**
+     * A round the source began while told not to look ends after it has been told to look
+     * again: what it skipped, it skipped on the old word, and that is not gone.
+     */
+    @Test
+    void shouldKeepWhatARoundSkippedOnTheOldWord() {
+        final Pods source = new Pods("pod-1", "pod-2");
+        final Feed<Pod> feed = loop.attach(1, source, new Placement());
+        source.poll(1);
+        awaitState(feed, FeedState.CONVERGED);
+        collapse(source, DetailLevel.OFF);
+
+        source.look(2);
+        collapse(source, DetailLevel.FINE);
+        feed.complete(AREA);
+        feed.removed("pod-1");
+        Await.until(() -> objectWithExternalId("pod-1") == null);
+
+        assertEquals(1, count("node[type=pod]"));
     }
 
     /**
@@ -242,8 +267,7 @@ class DemandTest {
         structure.setInterest("away", Interest.of(DetailLevel.COARSE)).join();
         structure.setInterest("showing", Interest.of(DetailLevel.FINE)).join();
         source.poll(2);
-        Await.until(() -> source.observations == 2);
-        assertTrue(hasCpu("pod-1"));
+        Await.until(() -> hasCpu("pod-1"));
 
         structure.clearInterest("showing").join();
         assertFalse(hasCpu("pod-1"));

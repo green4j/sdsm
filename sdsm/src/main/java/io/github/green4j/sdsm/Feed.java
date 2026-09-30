@@ -53,6 +53,7 @@ public final class Feed<O extends Observation> {
 
     private final TextObjectMap<Entry> entries = new TextObjectMap<>();
     private final LongObjectMap<Area> areas = new LongObjectMap<>();
+    private final LongObjectMap<long[]> roundsBegun = new LongObjectMap<>();
     private boolean converged;
 
     private volatile FeedState state = FeedState.LOADING;
@@ -62,6 +63,8 @@ public final class Feed<O extends Observation> {
     private Levels pending = new Levels();
     private Levels telling = new Levels();
     private boolean demandScheduled;
+    private long demandVersion;
+    private volatile long toldVersion;
 
     Feed(final EventLoop loop,
             final Structure structure,
@@ -131,6 +134,10 @@ public final class Feed<O extends Observation> {
      * Says everything offered for an area up to now is the whole of it, so whatever the feed
      * put there and has not seen this time round is gone. The first such word converges the
      * feed.
+     * <p>
+     * The next round of the area begins after this word, so what the source has been told by
+     * now is what it knows in that round. Each word carries what the source knew when its own
+     * round began: what it was told to look at again only later, it did not skip as gone.
      *
      * @param scope the area
      */
@@ -184,13 +191,28 @@ public final class Feed<O extends Observation> {
                 releaseIfObservation(kind, payload);
                 return;
             }
-            filling.add(kind, payload, scope);
+            filling.add(kind, payload, scope, kind == COMPLETE ? roundEnded(scope) : 0L);
             wake = !scheduled;
             scheduled = true;
         }
         if (wake) {
             loop.execute(drainTask);
         }
+    }
+
+    /**
+     * @param scope the area whose round has ended
+     * @return what the source had been told when that round began
+     */
+    private long roundEnded(final int scope) {
+        long[] begun = roundsBegun.get(scope);
+        if (begun == null) {
+            begun = new long[1];
+            roundsBegun.put(scope, begun);
+        }
+        final long ended = begun[0];
+        begun[0] = toldVersion;
+        return ended;
     }
 
     private void drainOnLoop() {
@@ -293,17 +315,20 @@ public final class Feed<O extends Observation> {
 
     private void demandOnLoop() {
         final Levels told;
+        final long version;
         synchronized (demandLock) {
             demandScheduled = false;
             final Levels swap = telling;
             telling = pending;
             pending = swap;
             told = telling;
+            version = told.version;
         }
         for (int i = 0; i < told.size; i++) {
             source.detailLevelChanged(told.ids[i], DetailLevel.of(told.levels[i]));
         }
         told.clear();
+        toldVersion = version;
     }
 
     void applyOnStructure() {
@@ -318,7 +343,8 @@ public final class Feed<O extends Observation> {
         final Batch batch = draining;
         for (int i = 0; i < batch.size; i++) {
             try {
-                batch.failures[i] = apply(batch.kinds[i], batch.payloads[i], batch.scopes[i]);
+                batch.failures[i] = apply(batch.kinds[i], batch.payloads[i], batch.scopes[i],
+                        batch.begun[i]);
             } catch (final Throwable failure) {
                 batch.failures[i] = failure;
             }
@@ -329,9 +355,11 @@ public final class Feed<O extends Observation> {
      * @param kind    what the source said
      * @param payload what it said it of
      * @param scope   the area, for a word about one
+     * @param begun   what the source had been told when a round it completes began
      * @return why an observation could not be materialized, or null
      */
-    private Throwable apply(final byte kind, final Object payload, final int scope) {
+    private Throwable apply(final byte kind, final Object payload, final int scope,
+                            final long begun) {
         switch (kind) {
             case OBSERVED:
                 if (payload != null) {
@@ -344,7 +372,7 @@ public final class Feed<O extends Observation> {
                 forget((CharSequence) payload);
                 return null;
             case COMPLETE:
-                sweep(scope);
+                sweep(scope, begun);
                 return null;
             case UNAVAILABLE:
                 moveTo(FeedState.STALE, (Throwable) payload);
@@ -411,15 +439,20 @@ public final class Feed<O extends Observation> {
         entries.remove(externalId);
     }
 
-    private void sweep(final int scope) {
+    /**
+     * @param scope the area
+     * @param begun what the source had been told when it began the round
+     */
+    private void sweep(final int scope, final long begun) {
         if (state == FeedState.STALE) {
             return;                     // unseen is not gone
         }
         final Area area = areaOf(scope);
         for (int i = area.size - 1; i >= 0; i--) {
             final Entry entry = area.entries[i];
-            if (entry.mark == area.mark || entry.level == DetailLevel.OFF.ordinal()) {
-                continue;               // what we told the source to stop looking at
+            if (entry.mark == area.mark || entry.level == DetailLevel.OFF.ordinal()
+                    || entry.raised > begun) {
+                continue;               // what the source was told not to look at this round
             }
             drop(entry);
             area.remove(entry);         // the last moves into the hole, and it has been seen
@@ -526,10 +559,15 @@ public final class Feed<O extends Observation> {
         if (entry == null) {
             return;                     // not a thing this source speaks about
         }
+        final long version = ++demandVersion;
+        if (entry.level == DetailLevel.OFF.ordinal() && level != DetailLevel.OFF) {
+            entry.raised = version;
+        }
         entry.level = (byte) level.ordinal();
         final boolean wake;
         synchronized (demandLock) {
             pending.add(externalId, (byte) level.ordinal());
+            pending.version = version;
             wake = !demandScheduled;
             demandScheduled = true;
         }
@@ -565,19 +603,23 @@ public final class Feed<O extends Observation> {
         private byte[] kinds = new byte[32];
         private Object[] payloads = new Object[32];
         private int[] scopes = new int[32];
+        private long[] begun = new long[32];
         private Throwable[] failures = new Throwable[32];
         private int size;
 
-        private void add(final byte kind, final Object payload, final int scope) {
+        private void add(final byte kind, final Object payload, final int scope,
+                         final long roundBegun) {
             if (size == kinds.length) {
                 kinds = Arrays.copyOf(kinds, size * 2);
                 payloads = Arrays.copyOf(payloads, size * 2);
                 scopes = Arrays.copyOf(scopes, size * 2);
+                begun = Arrays.copyOf(begun, size * 2);
                 failures = Arrays.copyOf(failures, size * 2);
             }
             kinds[size] = kind;
             payloads[size] = payload;
             scopes[size] = scope;
+            begun[size] = roundBegun;
             size++;
         }
 
@@ -591,7 +633,8 @@ public final class Feed<O extends Observation> {
     /**
      * What one observed id came to: the version last materialized for it, every object that
      * materializing it reached, and how much of it anyone wants - a thing the source was told
-     * to stop looking at is not swept for not having been seen.
+     * to stop looking at is not swept for not having been seen, nor is one it was told to look
+     * at again after the round began.
      */
     private static final class Entry {
         private final String externalId;
@@ -601,6 +644,7 @@ public final class Feed<O extends Observation> {
         private int indexInArea;
         private long mark;
         private byte level = (byte) DetailLevel.FINE.ordinal();
+        private long raised;
         private long[] ids = new long[4];
         private int idCount;
 
@@ -611,13 +655,15 @@ public final class Feed<O extends Observation> {
 
     /**
      * What the source still has to be told about demand: the last level per id, since an id
-     * asked about twice before the loop wakes has only one answer.
+     * asked about twice before the loop wakes has only one answer, and the last change among
+     * them.
      */
     private static final class Levels {
         private CharSequence[] ids = new CharSequence[8];
         private byte[] levels = new byte[8];
         private final TextObjectMap<Integer> positions = new TextObjectMap<>();
         private int size;
+        private long version;
 
         private void add(final CharSequence externalId, final byte level) {
             final Integer at = positions.get(externalId);
