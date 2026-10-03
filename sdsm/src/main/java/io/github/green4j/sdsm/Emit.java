@@ -1,5 +1,7 @@
 package io.github.green4j.sdsm;
 
+import java.util.Collection;
+
 /**
  * What a materializer writes through. Every object it names is named by the id the observed
  * world knows it by, so materializing the same observation twice reaches what it made the
@@ -25,6 +27,7 @@ public final class Emit {
     private final LongCounts claims;
     private final int[] supplyThresholds;
 
+    private final StringBuilder portId = new StringBuilder(128);
     private long[] touched = new long[8];
     private int touchedCount;
     private boolean collecting;
@@ -75,46 +78,49 @@ public final class Emit {
     }
 
     /**
-     * @param nodeId     node the input belongs to
-     * @param externalId the id the input is known by
-     * @param name       name to give it if it is not there yet
-     * @param type       type to give it if it is not there yet
+     * @param nodeId node the input belongs to, one with an external id
+     * @param name   its name, one to an input of the node; with the node's external id, what
+     *               the input is known by ({@link Port#appendExternalId})
+     * @param type   type to give it if it is not there yet
      * @return id of the input
      */
-    public long input(final long nodeId, final CharSequence externalId,
-                      final String name, final String type) {
-        final StructureObject known = known(externalId, ObjectKind.INPUT);
+    public long input(final long nodeId, final CharSequence name, final String type) {
+        final StructureObject known = known(portIdOf(nodeId, ObjectKind.INPUT, name), ObjectKind.INPUT);
         if (known != null) {
             return touch(known.id());
         }
-        return touch(structure.addInput(nodeId, name, type, externalId).id());
+        return touch(structure.addInput(nodeId, name.toString(), type).id());
     }
 
     /**
-     * @param nodeId     node the output belongs to
-     * @param externalId the id the output is known by
-     * @param name       name to give it if it is not there yet
-     * @param type       type to give it if it is not there yet
+     * @param nodeId node the output belongs to, one with an external id
+     * @param name   its name, one to an output of the node; with the node's external id, what
+     *               the output is known by ({@link Port#appendExternalId})
+     * @param type   type to give it if it is not there yet
      * @return id of the output
      */
-    public long output(final long nodeId, final CharSequence externalId,
-                       final String name, final String type) {
-        final StructureObject known = known(externalId, ObjectKind.OUTPUT);
+    public long output(final long nodeId, final CharSequence name, final String type) {
+        final StructureObject known = known(portIdOf(nodeId, ObjectKind.OUTPUT, name), ObjectKind.OUTPUT);
         if (known != null) {
             return touch(known.id());
         }
-        return touch(structure.addOutput(nodeId, name, type, externalId).id());
+        return touch(structure.addOutput(nodeId, name.toString(), type).id());
     }
 
     /**
      * Puts a node under another on an axis, or leaves it there if it is already there - see
-     * {@link Structure#contain(long, long, String)}.
+     * {@link Structure#contain(long, long, String)}. An observation says where its node is now,
+     * so a node under another on that axis is taken from there.
      *
      * @param parentId the node that holds
      * @param childId  the node held
      * @param axis     the axis
      */
     public void contain(final long parentId, final long childId, final String axis) {
+        final Node held = structure.parentOn(childId, axis);
+        if (held != null && held.id() != parentId) {
+            structure.uncontain(held.id(), childId);
+        }
         structure.contain(parentId, childId, axis);
     }
 
@@ -142,6 +148,14 @@ public final class Emit {
 
     public void require(final long portId, final CharSequence address, final int domainId) {
         structure.require(portId, address, domainId);
+    }
+
+    public void provide(final long portId, final Collection<? extends CharSequence> addresses, final int domainId) {
+        structure.provide(portId, addresses, domainId);
+    }
+
+    public void require(final long portId, final Collection<? extends CharSequence> addresses, final int domainId) {
+        structure.require(portId, addresses, domainId);
     }
 
     public void clearAddress(final long portId) {
@@ -206,6 +220,15 @@ public final class Emit {
         if (claims.countOf(objectId) == 0) {
             structure.remove(objectId);
         }
+    }
+
+    private CharSequence portIdOf(final long nodeId, final ObjectKind side, final CharSequence name) {
+        final String node = structure.requireObject(nodeId, ObjectKind.NODE).externalId();
+        if (node == null) {
+            throw new IllegalArgumentException("Node " + nodeId + " has no external id to know its ports by");
+        }
+        portId.setLength(0);
+        return Port.appendExternalId(portId, node, side, name);
     }
 
     private int thresholdOf(final int keyId) {

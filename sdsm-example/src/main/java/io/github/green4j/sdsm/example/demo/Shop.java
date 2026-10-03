@@ -91,6 +91,13 @@ public final class Shop {
         public void stop() {
         }
 
+        @Override
+        public void rejected(final Service observation, final Throwable reason) {
+            System.err.println("not materialized: "
+                    + (observation != null ? observation.externalId() : "a change of state"));
+            reason.printStackTrace(System.err);
+        }
+
         /**
          * Requests per second are worth fetching only for what someone looks at closely.
          */
@@ -150,10 +157,9 @@ public final class Shop {
             emit.setLong(node, rps, service.rps);
             emit.setLong(node, down, service.up ? 0L : 1L);
 
-            emit.provide(emit.input(node, service.name + "<", "in", "http"), service.name);
+            emit.provide(emit.input(node, "in", "http"), service.name);
             for (final String callee : service.calls) {
-                emit.require(emit.output(node, service.name + ">" + callee, callee, "http"),
-                        callee);
+                emit.require(emit.output(node, callee, "http"), callee);
             }
         }
 

@@ -1,5 +1,6 @@
 package io.github.green4j.sdsm.example.basic;
 
+import io.github.green4j.sdsm.Domains;
 import io.github.green4j.sdsm.Structure;
 import io.github.green4j.sdsm.StructureRuntime;
 
@@ -80,6 +81,23 @@ public final class B06Addresses {
             out.accept("-- and no longer");
             structure.run(() -> structure.denyRoute(green, blue)).join();
             links(structure, out);
+
+            // A port may declare several addresses, each met on its own; a link is named by the
+            // one it came from.
+            out.accept("-- an archive reads news and prices through one input");
+            final long news = output(structure, "news");
+            final long archive = input(structure, "archive", "in");
+            structure.run(() -> {
+                structure.provide(news, "news");
+                structure.require(archive, List.of("news", "prices"), Domains.NO_DOMAIN);
+            }).join();
+            links(structure, out);
+            out.accept("who reads prices: " + readers(structure, "prices"));
+
+            // A set is restated whole: only the links of what came or went change.
+            out.accept("-- the archive keeps prices only");
+            structure.run(() -> structure.require(archive, List.of("prices"), Domains.NO_DOMAIN)).join();
+            links(structure, out);
         }
     }
 
@@ -112,10 +130,19 @@ public final class B06Addresses {
             final Map<String, Object> from = port(structure, link.get("from"));
             final Map<String, Object> to = port(structure, link.get("to"));
             links.add(nodeName(structure, from) + " -> " + nodeName(structure, to)
-                    + " (" + to.get("address") + ")");
+                    + " (" + link.get("name") + ")");
         }
         Collections.sort(links);
         return links;
+    }
+
+    private static List<Object> readers(final Structure structure, final String address) {
+        final List<Object> readers = new ArrayList<>();
+        for (final Map<String, Object> input : structure.query("input[address=" + address + "]").join()) {
+            readers.add(nodeName(structure, input));
+        }
+        Collections.sort(readers, (a, b) -> a.toString().compareTo(b.toString()));
+        return readers;
     }
 
     private static Map<String, Object> port(final Structure structure, final Object id) {

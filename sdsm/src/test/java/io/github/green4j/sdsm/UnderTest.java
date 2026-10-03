@@ -76,6 +76,21 @@ class UnderTest {
     }
 
     @Test
+    void shouldFollowAnObjectThatMovesOutOfWhatIsNegated() {
+        subscribeTo("node[type=pod] & !under(placement, /eu-de/green)");
+        assertEquals(List.of(ingest), recorder.idsInSnapshot(ChangeKind.ADDED));
+
+        structure.run(() -> structure.uncontain(green, day)).join();
+        structure.flushAll().join();
+        assertEquals(List.of(query), recorder.idsAfterSnapshot(ChangeKind.ADDED));
+
+        structure.run(() -> structure.uncontain(blue, ingest)).join();
+        structure.run(() -> structure.contain(green, ingest, "placement")).join();
+        structure.flushAll().join();
+        assertEquals(List.of(ingest), recorder.idsAfterSnapshot(ChangeKind.REMOVED));
+    }
+
+    @Test
     void shouldFollowWhatAGroupCarries() {
         subscribeTo("node[type=pod] & under(placement, /eu-de/blue)");
 

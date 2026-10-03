@@ -74,6 +74,13 @@ public final class B09Feed {
         public void stop() {
         }
 
+        @Override
+        public void rejected(final Pod observation, final Throwable reason) {
+            System.err.println("not materialized: "
+                    + (observation != null ? observation.externalId() : "a change of state"));
+            reason.printStackTrace(System.err);
+        }
+
         /**
          * Says every pod there is, and that this is all of them.
          *

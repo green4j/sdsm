@@ -757,27 +757,19 @@ public final class Structure {
         return newLink;
     }
 
-    public Input addInput(final long nodeId,
-                          final String inputName,
-                          final String inputType) {
-        return addInput(nodeId, inputName, inputType, null);
-    }
-
     /**
-     * @param nodeId     node the input belongs to
-     * @param inputName  name of the input
-     * @param inputType  type of the input
-     * @param externalId as for {@link #createNode(String, String, CharSequence)}
-     * @return the input
+     * @param nodeId    node the input belongs to
+     * @param inputName its name; one input of a node with an external id has it
+     * @param inputType type of the input
+     * @return the input, known by {@link Port#appendExternalId} if its node has an external id
      */
     public Input addInput(final long nodeId,
                           final String inputName,
-                          final String inputType,
-                          final CharSequence externalId) {
+                          final String inputType) {
         requireTask();
-        final String owned = ownedExternalId(externalId);
         final Node owningNode =
                 (Node) requireObject(nodeId, ObjectKind.NODE);
+        final String owned = portExternalIdOf(owningNode, ObjectKind.INPUT, inputName);
         requireFreeExternalId(owned);
         final long id = globalIdCounter.getAndIncrement();
         final Input newInput = new Input(id, inputName, inputType, owningNode, owned);
@@ -786,27 +778,19 @@ public final class Structure {
         return newInput;
     }
 
-    public Output addOutput(final long nodeId,
-                            final String outputName,
-                            final String outputType) {
-        return addOutput(nodeId, outputName, outputType, null);
-    }
-
     /**
      * @param nodeId     node the output belongs to
-     * @param outputName name of the output
+     * @param outputName its name; one output of a node with an external id has it
      * @param outputType type of the output
-     * @param externalId as for {@link #createNode(String, String, CharSequence)}
-     * @return the output
+     * @return the output, known by {@link Port#appendExternalId} if its node has an external id
      */
     public Output addOutput(final long nodeId,
                             final String outputName,
-                            final String outputType,
-                            final CharSequence externalId) {
+                            final String outputType) {
         requireTask();
-        final String owned = ownedExternalId(externalId);
         final Node owningNode =
                 (Node) requireObject(nodeId, ObjectKind.NODE);
+        final String owned = portExternalIdOf(owningNode, ObjectKind.OUTPUT, outputName);
         requireFreeExternalId(owned);
         final long id = globalIdCounter.getAndIncrement();
         final Output newOutput =
@@ -814,6 +798,16 @@ public final class Structure {
         owningNode.outputsMap().put(id, newOutput);
         registerNewObject(newOutput);
         return newOutput;
+    }
+
+    private static String portExternalIdOf(final Node node, final ObjectKind side, final String name) {
+        if (node.externalId() == null) {
+            return null;
+        }
+        if (name == null || isBlank(name)) {
+            throw new IllegalArgumentException("A port of a node with an external id is named");
+        }
+        return Port.appendExternalId(new StringBuilder(), node.externalId(), side, name).toString();
     }
 
     /**
@@ -1243,6 +1237,35 @@ public final class Structure {
     }
 
     /**
+     * Provides several addresses at one port, each matched on its own, in place of whatever it
+     * declared: a port that answers for many things meets each of their requirers. Declaring
+     * none withdraws.
+     * Runs inside a task.
+     *
+     * @param portId    the input or output they are reachable at
+     * @param addresses the addresses, in any order
+     * @param domainId  the copy of the world they are reachable in
+     */
+    public void provide(final long portId, final Collection<? extends CharSequence> addresses, final int domainId) {
+        declareAddresses(portId, addresses, domainId, Role.PROVIDE);
+    }
+
+    /**
+     * Requires several addresses at one port, each matched on its own, in place of whatever it
+     * declared: an input that reads many streams of a store meets the output of each, and a
+     * changed set redraws only the links of the addresses that came or went. Requiring none
+     * withdraws.
+     * Runs inside a task.
+     *
+     * @param portId    the input or output looking for them
+     * @param addresses the addresses, in any order
+     * @param domainId  the copy of the world it is looking from
+     */
+    public void require(final long portId, final Collection<? extends CharSequence> addresses, final int domainId) {
+        declareAddresses(portId, addresses, domainId, Role.REQUIRE);
+    }
+
+    /**
      * Withdraws whatever a port declared, taking the links drawn from it with it.
      * Runs inside a task.
      *
@@ -1272,42 +1295,125 @@ public final class Structure {
         if (port.declaration() != null && port.declaration().sameAs(address, role, domainId)) {
             return;                     // an observation repeating itself costs nothing
         }
-        withdrawAddress(port);
-        port.declare(new Port.Declaration(address.toString(), role, domainId, domains.nameOf(domainId)));
-        final LongSet peers = indexAddress(port);
-        versionCounter.incrementAndGet();
-        markDeclarationDirty(port);
-        recheck(port);
-        linkToPeersOf(port, peers);
+        declare(port, new String[] {address.toString()}, domainId, role);
+    }
+
+    private void declareAddresses(final long portId,
+                                  final Collection<? extends CharSequence> addresses,
+                                  final int domainId,
+                                  final Role role) {
+        requireTask();
+        domains.requireKnown(domainId);
+        final Port port = requirePort(portId);
+        if (port.declaration() != null && port.declaration().sameAs(addresses, role, domainId)) {
+            return;
+        }
+        final String[] made = new String[addresses.size()];
+        int count = 0;
+        for (final CharSequence address : addresses) {
+            if (isBlank(address)) {
+                throw new IllegalArgumentException("address must not be null or blank");
+            }
+            made[count++] = address.toString();
+        }
+        Arrays.sort(made);
+        count = 0;
+        for (int i = 0; i < made.length; i++) {
+            if (count == 0 || !made[i].equals(made[count - 1])) {
+                made[count++] = made[i];
+            }
+        }
+        if (count == 0) {
+            withdrawAddress(port);
+        } else {
+            declare(port, count == made.length ? made : Arrays.copyOf(made, count), domainId, role);
+        }
     }
 
     /**
-     * @param port a port that has just declared
-     * @return the ports declaring the same address, itself among them
+     * Keeps the links of the addresses the port still declares: with the same role in the same
+     * domain only those of the addresses that went are taken away and of those that came drawn.
+     *
+     * @param port      the port
+     * @param addresses sorted, each once
+     * @param domainId  the copy of the world
+     * @param role      what it does with them
      */
-    private LongSet indexAddress(final Port port) {
-        LongSet peers = portIdsByAddress.get(port.address());
-        if (peers == null) {
-            peers = new LongSet();
-            portIdsByAddress.put(port.address(), peers);
+    private void declare(final Port port, final String[] addresses, final int domainId, final Role role) {
+        final Port.Declaration held = port.declaration();
+        if (held != null && held.role == role && held.domainId == domainId) {
+            if (Arrays.equals(held.addresses, addresses)) {
+                return;
+            }
+            final Port.Declaration made = new Port.Declaration(addresses, role, domainId, domains.nameOf(domainId));
+            for (final String address : held.addresses) {
+                if (!made.declares(address)) {
+                    removeDerivedLinksAt(port, address);
+                    unindexAddress(port, address);
+                }
+            }
+            port.declare(made);
+            versionCounter.incrementAndGet();
+            markDeclarationDirty(port);
+            recheck(port);
+            for (final String address : addresses) {
+                if (!held.declares(address)) {
+                    linkToPeersOf(port, address, indexAddress(port, address));
+                }
+            }
+            return;
         }
-        peers.add(port.id());
-        if (port.role() == Role.REQUIRE) {
-            LongSet requiring = requiringPortIdsByDomain.get(port.domain());
+        withdrawAddress(port);
+        port.declare(new Port.Declaration(addresses, role, domainId, domains.nameOf(domainId)));
+        if (role == Role.REQUIRE) {
+            LongSet requiring = requiringPortIdsByDomain.get(domainId);
             if (requiring == null) {
                 requiring = new LongSet();
-                requiringPortIdsByDomain.put(port.domain(), requiring);
+                requiringPortIdsByDomain.put(domainId, requiring);
             }
             requiring.add(port.id());
         }
+        for (final String address : addresses) {
+            indexAddress(port, address);
+        }
+        versionCounter.incrementAndGet();
+        markDeclarationDirty(port);
+        recheck(port);
+        for (final String address : addresses) {
+            linkToPeersOf(port, address, portIdsByAddress.get(address));
+        }
+    }
+
+    /**
+     * @param port    the port
+     * @param address one it declares
+     * @return the ports declaring the address, the port among them
+     */
+    private LongSet indexAddress(final Port port, final String address) {
+        LongSet peers = portIdsByAddress.get(address);
+        if (peers == null) {
+            peers = new LongSet();
+            portIdsByAddress.put(address, peers);
+        }
+        peers.add(port.id());
         return peers;
     }
 
+    private void unindexAddress(final Port port, final String address) {
+        final LongSet peers = portIdsByAddress.get(address);
+        if (peers != null) {
+            peers.remove(port.id());
+            if (peers.size() == 0) {
+                portIdsByAddress.remove(address);
+            }
+        }
+    }
+
     private void withdrawAddress(final Port port) {
-        if (port.address() == null) {
+        if (port.declaration() == null) {
             return;
         }
-        removeDerivedLinksAt(port);
+        removeDerivedLinksAt(port, null);
         forgetAddress(port);
         port.undeclare();
         versionCounter.incrementAndGet();
@@ -1326,16 +1432,11 @@ public final class Structure {
             return;
         }
         final Port port = (Port) target;
-        final String address = port.address();
-        if (address == null) {
+        if (port.declaration() == null) {
             return;
         }
-        final LongSet peers = portIdsByAddress.get(address);
-        if (peers != null) {
-            peers.remove(port.id());
-            if (peers.size() == 0) {
-                portIdsByAddress.remove(address);
-            }
+        for (final String address : port.declaration().addresses) {
+            unindexAddress(port, address);
         }
         if (port.role() == Role.REQUIRE) {
             final LongSet requiring = requiringPortIdsByDomain.get(port.domain());
@@ -1348,7 +1449,7 @@ public final class Structure {
         }
     }
 
-    private void linkToPeersOf(final Port declared, final LongSet peers) {
+    private void linkToPeersOf(final Port declared, final String address, final LongSet peers) {
         for (int i = 0; i < peers.size(); i++) {
             final long peerId = peers.valueAt(i);
             if (peerId == declared.id()) {
@@ -1356,7 +1457,7 @@ public final class Structure {
             }
             final StructureObject peer = objectsById.get(peerId);
             if (peer instanceof Port) {
-                linkIfMatched(declared, (Port) peer);
+                linkIfMatched(declared, (Port) peer, address);
             }
         }
     }
@@ -1366,10 +1467,11 @@ public final class Structure {
      * for it, and they are opposite ends, so the link runs from the output to the input.
      * It is named by the address it came from and typed by the port that offered it.
      *
-     * @param left  one declaring port
-     * @param right the other
+     * @param left    one declaring port
+     * @param right   the other
+     * @param address what both declare
      */
-    private void linkIfMatched(final Port left, final Port right) {
+    private void linkIfMatched(final Port left, final Port right, final String address) {
         if (left.role() == right.role() || left.kind() == right.kind()) {
             return;
         }
@@ -1383,7 +1485,7 @@ public final class Structure {
         final Input toInput = (Input) (providerIsOutput ? requirer : provider);
         final long id = globalIdCounter.getAndIncrement();
         final Link derivedLink = new Link(
-                id, provider.address(), provider.type(), fromOutput, toInput, true, null);
+                id, address, provider.type(), fromOutput, toInput, true, null);
         indexLinkAdd(derivedLink);
         registerNewObject(derivedLink);
         restateLinks(derivedLink);
@@ -1394,16 +1496,18 @@ public final class Structure {
      * hand. A removal moves the last link of the index into the hole, so walking backwards
      * visits each one exactly once.
      *
-     * @param port the port whose declaration is going
+     * @param port    the port whose declaration is going
+     * @param address the one of its addresses that is going, or null for all
      */
-    private void removeDerivedLinksAt(final Port port) {
+    private void removeDerivedLinksAt(final Port port, final String address) {
         final LongSet linkIds = linksAt(port);
         if (linkIds == null) {
             return;
         }
         for (int i = linkIds.size() - 1; i >= 0; i--) {
             final StructureObject candidate = objectsById.get(linkIds.valueAt(i));
-            if (candidate instanceof Link && ((Link) candidate).isDerived()) {
+            if (candidate instanceof Link && ((Link) candidate).isDerived()
+                    && (address == null || address.equals(candidate.name()))) {
                 cascadeRemoveSingle(candidate);
             }
         }
@@ -1478,11 +1582,13 @@ public final class Structure {
         }
         for (int i = 0; i < requiring.size(); i++) {
             final Port requirer = (Port) objectsById.get(requiring.valueAt(i));
-            final LongSet peers = portIdsByAddress.get(requirer.address());
-            for (int k = 0; k < peers.size(); k++) {
-                final StructureObject peer = objectsById.get(peers.valueAt(k));
-                if (peer instanceof Port && ((Port) peer).domain() == providingDomain) {
-                    linkIfMatched(requirer, (Port) peer);
+            for (final String address : requirer.declaration().addresses) {
+                final LongSet peers = portIdsByAddress.get(address);
+                for (int k = 0; k < peers.size(); k++) {
+                    final StructureObject peer = objectsById.get(peers.valueAt(k));
+                    if (peer instanceof Port && ((Port) peer).domain() == providingDomain) {
+                        linkIfMatched(requirer, (Port) peer, address);
+                    }
                 }
             }
         }
@@ -3320,7 +3426,7 @@ public final class Structure {
         return candidate;
     }
 
-    private StructureObject requireObject(final long objectId,
+    StructureObject requireObject(final long objectId,
                                           final ObjectKind expectedKind) {
         final StructureObject candidate = requireObject(objectId);
         if (candidate.kind() != expectedKind) {

@@ -31,6 +31,14 @@ final class Selector {
         }
 
         /**
+         * @return whether it reads the node a port is on, so a change of a node can change which
+         *         of its ports it holds
+         */
+        default boolean readsOwner() {
+            return false;
+        }
+
+        /**
          * @param keyId a property key
          * @return whether a change of that property, on an object or at the ends of a link, can
          *         change what it holds
@@ -72,7 +80,7 @@ final class Selector {
                             final PropertyKeys keys,
                             final Placement placement) {
         if (selectorText == null || selectorText.isBlank()) {
-            return new Compiled(candidate -> true, new boolean[0], ALL_KINDS, false, false);
+            return new Compiled(candidate -> true, new boolean[0], ALL_KINDS, false, false, false);
         }
         final SelectorParser parser = new SelectorParser(selectorText, keys);
         final Term tree = parser.parseExpression();
@@ -80,7 +88,7 @@ final class Selector {
         final KeySet read = new KeySet();
         tree.collectKeys(read);
         return new Compiled(tree.compile(placement), read.toArray(), tree.kinds(),
-                tree.readsPlacement(), tree.readsEnds());
+                tree.readsPlacement(), tree.readsEnds(), tree.readsOwner());
     }
 
     private static final Pattern INTEGER =
@@ -104,17 +112,20 @@ final class Selector {
         private final int kinds;
         private final boolean placement;
         private final boolean ends;
+        private final boolean owner;
 
         Compiled(final Predicate<StructureObject> body,
                  final boolean[] readKeys,
                  final int kinds,
                  final boolean placement,
-                 final boolean ends) {
+                 final boolean ends,
+                 final boolean owner) {
             this.body = body;
             this.readKeys = readKeys;
             this.kinds = kinds;
             this.placement = placement;
             this.ends = ends;
+            this.owner = owner;
         }
 
         @Override
@@ -130,6 +141,11 @@ final class Selector {
         @Override
         public boolean readsEnds() {
             return ends;
+        }
+
+        @Override
+        public boolean readsOwner() {
+            return owner;
         }
 
         @Override
@@ -182,6 +198,10 @@ final class Selector {
         }
 
         boolean readsEnds() {
+            return false;
+        }
+
+        boolean readsOwner() {
             return false;
         }
     }
@@ -307,6 +327,85 @@ final class Selector {
         }
     }
 
+    /**
+     * The ports whose nodes a term holds. What the term reads, it reads on those nodes.
+     */
+    private static final class OnTerm extends Term {
+        private final Term owners;
+
+        OnTerm(final Term owners) {
+            this.owners = owners;
+        }
+
+        @Override
+        Predicate<StructureObject> compile(final Placement placement) {
+            final Predicate<StructureObject> held = owners.compile(placement);
+            return candidate -> candidate instanceof Port && held.test(((Port) candidate).owningNode());
+        }
+
+        @Override
+        int kinds() {
+            return bitOf(ObjectKind.INPUT) | bitOf(ObjectKind.OUTPUT);
+        }
+
+        @Override
+        void collectKeys(final KeySet keys) {
+            owners.collectKeys(keys);
+        }
+
+        @Override
+        boolean readsPlacement() {
+            return owners.readsPlacement();
+        }
+
+        @Override
+        boolean readsOwner() {
+            return true;
+        }
+    }
+
+    /**
+     * What a term does not hold, of every kind: an object whose property is absent is held by
+     * {@code !*[key=v]}, never by {@code [key!=v]}.
+     */
+    private static final class NotTerm extends Term {
+        private final Term negated;
+
+        NotTerm(final Term negated) {
+            this.negated = negated;
+        }
+
+        @Override
+        Predicate<StructureObject> compile(final Placement placement) {
+            return negated.compile(placement).negate();
+        }
+
+        @Override
+        int kinds() {
+            return ALL_KINDS;
+        }
+
+        @Override
+        void collectKeys(final KeySet keys) {
+            negated.collectKeys(keys);
+        }
+
+        @Override
+        boolean readsPlacement() {
+            return negated.readsPlacement();
+        }
+
+        @Override
+        boolean readsEnds() {
+            return negated.readsEnds();
+        }
+
+        @Override
+        boolean readsOwner() {
+            return negated.readsOwner();
+        }
+    }
+
     private static final class AndTerm extends Term {
         private final Term left;
         private final Term right;
@@ -342,6 +441,11 @@ final class Selector {
         @Override
         boolean readsEnds() {
             return left.readsEnds() || right.readsEnds();
+        }
+
+        @Override
+        boolean readsOwner() {
+            return left.readsOwner() || right.readsOwner();
         }
     }
 
@@ -381,12 +485,18 @@ final class Selector {
         boolean readsEnds() {
             return left.readsEnds() || right.readsEnds();
         }
+
+        @Override
+        boolean readsOwner() {
+            return left.readsOwner() || right.readsOwner();
+        }
     }
 
     private Selector() {
     }
 
     private enum Operator {
+        PRESENT,
         EQUAL,
         NOT_EQUAL,
         CONTAINS,
@@ -429,7 +539,7 @@ final class Selector {
         /**
          * @param keyId    the property
          * @param operator how to compare
-         * @param expected the literal, as written
+         * @param expected the literal, as written; null for {@link Operator#PRESENT}
          */
         PropertyPredicate(final int keyId, final Operator operator, final String expected) {
             this.keyId = keyId;
@@ -438,7 +548,7 @@ final class Selector {
             long asLong = 0L;
             double asDouble = 0.0;
             Literal kind = Literal.TEXT;
-            if (INTEGER.matcher(expected).matches()) {
+            if (expected != null && INTEGER.matcher(expected).matches()) {
                 try {
                     asLong = Long.parseLong(expected);
                     asDouble = asLong;
@@ -447,7 +557,7 @@ final class Selector {
                     asDouble = Double.parseDouble(expected);
                     kind = Literal.DECIMAL;
                 }
-            } else if (DECIMAL.matcher(expected).matches()) {
+            } else if (expected != null && DECIMAL.matcher(expected).matches()) {
                 asDouble = Double.parseDouble(expected);
                 kind = Literal.DECIMAL;
             }
@@ -472,6 +582,9 @@ final class Selector {
         public boolean test(final StructureObject candidate) {
             if (candidate.valueTypeOf(keyId) == ValueType.ABSENT) {
                 return false;
+            }
+            if (operator == Operator.PRESENT) {
+                return true;
             }
             final boolean matched = matches(candidate);
             return operator == Operator.NOT_EQUAL ? !matched : matched;
@@ -515,6 +628,9 @@ final class Selector {
                     if (operator.orders()) {
                         return false;
                     }
+                    if (keyId == PropertyKeys.ADDRESS && candidate instanceof Port) {
+                        return anyAddressMatches((Port) candidate);
+                    }
                     return contentsMatch(candidate.textValueOf(keyId));
                 default:
                     return false;
@@ -544,6 +660,23 @@ final class Selector {
                 default:
                     return comparison >= 0;
             }
+        }
+
+        /**
+         * A port that declares several addresses is compared one address at a time, so
+         * {@code address="x"} holds a port that declares x among others, and {@code address!="x"}
+         * one that does not declare it.
+         *
+         * @param port the port
+         * @return whether one of its addresses matches
+         */
+        private boolean anyAddressMatches(final Port port) {
+            for (int i = 0; i < port.addressCount(); i++) {
+                if (contentsMatch(port.addressAt(i))) {
+                    return true;
+                }
+            }
+            return false;
         }
 
         private boolean contentsMatch(final CharSequence actual) {
@@ -647,6 +780,7 @@ final class Selector {
         private static final String UNDER = "under";
         private static final String BETWEEN = "between";
         private static final String TOUCHING = "touching";
+        private static final String ON = "on";
 
         private final String source;
         private final PropertyKeys keys;
@@ -678,6 +812,10 @@ final class Selector {
 
         private Term parseFactor() {
             skipWhitespace();
+            if (peek('!')) {
+                consume('!');
+                return new NotTerm(parseFactor());
+            }
             if (peek('(')) {
                 consume('(');
                 final Term nested = parseExpression();
@@ -700,6 +838,13 @@ final class Selector {
                 consume(')');
                 return new EndsTerm(ends, BETWEEN.equals(kindLiteral));
             }
+            if (ON.equals(kindLiteral) && peek('(')) {
+                consume('(');
+                final Term owners = parseExpression();
+                skipWhitespace();
+                consume(')');
+                return new OnTerm(owners);
+            }
             return parseProperties(buildKindTerm(kindLiteral));
         }
 
@@ -716,6 +861,10 @@ final class Selector {
             skipWhitespace();
             final String propertyKey = readIdentifier();
             skipWhitespace();
+            if (peek(']')) {
+                consume(']');
+                return new PropertyTerm(keys.idOf(propertyKey), Operator.PRESENT, null);
+            }
             final Operator operator;
             if (peekTwo("!=")) {
                 position += 2;

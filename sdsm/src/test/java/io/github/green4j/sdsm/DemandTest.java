@@ -78,6 +78,11 @@ class DemandTest {
         }
 
         @Override
+        public void rejected(final Pod observation, final Throwable reason) {
+            reason.printStackTrace(System.err);
+        }
+
+        @Override
         public void start(final Feed<Pod> started) {
             this.feed = started;
         }

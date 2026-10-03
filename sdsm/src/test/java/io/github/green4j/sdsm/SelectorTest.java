@@ -48,6 +48,35 @@ class SelectorTest {
     }
 
     @Test
+    void shouldReadWhatTheNodeOfAPortIsSelectedBy() {
+        final Selector.Expression selector = parse("on(node[tier=shop])");
+
+        assertTrue(selector.reads(keys.idOf("tier")));
+        assertTrue(selector.readsOwner());
+        assertFalse(selector.readsEnds());
+        assertTrue(selector.mayMatch(ObjectKind.INPUT));
+        assertTrue(selector.mayMatch(ObjectKind.OUTPUT));
+        assertFalse(selector.mayMatch(ObjectKind.NODE));
+    }
+
+    /**
+     * What it does not hold changes as what it negates does, so it reads the same.
+     */
+    @Test
+    void shouldReadWhatItNegates() {
+        final Selector.Expression selector = parse("node & !node[status=UP]");
+        assertTrue(selector.reads(keys.idOf("status")));
+        assertTrue(selector.mayMatch(ObjectKind.NODE));
+        assertFalse(selector.mayMatch(ObjectKind.LINK));
+
+        assertTrue(parse("!touching(node[tier=shop])").readsEnds());
+        assertTrue(parse("!touching(node[tier=shop])").mayMatch(ObjectKind.NODE));
+        assertTrue(parse("!on(node)").readsOwner());
+        assertTrue(parse("!under(placement, /eu)").readsPlacement());
+        assertTrue(parse("[status]").reads(keys.idOf("status")));
+    }
+
+    @Test
     void shouldKnowWhichKindsCanMatch() {
         final Selector.Expression nodes = parse("node[status=UP]");
         assertTrue(nodes.mayMatch(ObjectKind.NODE));
@@ -97,6 +126,15 @@ class SelectorTest {
         "DOUBLE | -0.0             | node[x<=-0.0]               | true",
         "TEXT   | UP               | node[x>0]                   | false",
         "TEXT   | UP               | node[y>0]                   | false",
+        "TEXT   | UP               | node[x]                     | true",
+        "TEXT   | UP               | node[y]                     | false",
+        "TEXT   | UP               | node & !*[y]                | true",
+        "TEXT   | UP               | node[y!=1]                  | false",
+        "TEXT   | UP               | node & ![y=1]               | true",
+        "TEXT   | UP               | node & ![x=UP]              | false",
+        "TEXT   | UP               | node & !(*[x=DOWN], [y])    | true",
+        "TEXT   | UP               | !node                       | false",
+        "TEXT   | UP               | !!node                      | true",
     })
     void shouldCompareAValueAsWhatItIs(final ValueType type,
                                        final String value,
@@ -122,7 +160,8 @@ class SelectorTest {
     }
 
     @ParameterizedTest
-    @ValueSource(strings = {"node[cpu>high]", "node[", "under(placement)", "under(placement, /)"})
+    @ValueSource(strings = {"node[cpu>high]", "node[", "under(placement)", "under(placement, /)",
+        "!", "node & !", "node!"})
     void shouldRefuseWhatIsNotASelector(final String text) {
         assertThrows(IllegalArgumentException.class, () -> parse(text));
     }

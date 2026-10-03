@@ -10,6 +10,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletionException;
 
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -152,6 +153,120 @@ class AddressTest {
 
         provide(producer, "tb:aggr.eu", Domains.NO_DOMAIN);
         assertNotEquals(NO_LINK, linkBetween(producer, consumer));
+    }
+
+    private void require(final long portId, final List<String> addresses, final int domainId) {
+        structure.run(() -> structure.require(portId, addresses, domainId)).join();
+    }
+
+    private long linkNamed(final String address) {
+        final long[] ids = structure.matchedObjectIds("link[name=\"" + address + "\"]").join();
+        return ids.length == 1 ? ids[0] : NO_LINK;
+    }
+
+    /**
+     * A gateway reads whichever stream of a store it is asked for: one input, meeting the output
+     * of each stream, each link named by its own.
+     */
+    @Test
+    void shouldMeetTheOutputOfEachAddressOneInputRequires() {
+        final long store = node("timebase");
+        final long trades = structure.submit(() -> structure.addOutput(store, "trades", "tb")).join().id();
+        final long quotes = structure.submit(() -> structure.addOutput(store, "quotes", "tb")).join().id();
+        provide(trades, "tb:trades", Domains.NO_DOMAIN);
+        provide(quotes, "tb:quotes", Domains.NO_DOMAIN);
+        final long gateway = input(node("gateway"));
+
+        require(gateway, List.of("tb:trades", "tb:quotes", "tb:bars"), Domains.NO_DOMAIN);
+
+        assertEquals(2, linkIds().length);
+        assertEquals(linkBetween(trades, gateway), linkNamed("tb:trades"));
+        assertEquals(linkBetween(quotes, gateway), linkNamed("tb:quotes"));
+        assertEquals(1, structure.matchedObjectIds("input[address=\"tb:quotes\"][links=2]").join().length);
+
+        final long bars = structure.submit(() -> structure.addOutput(store, "bars", "tb")).join().id();
+        provide(bars, "tb:bars", Domains.NO_DOMAIN);
+        assertNotEquals(NO_LINK, linkBetween(bars, gateway));
+    }
+
+    /**
+     * A selector compares each address of a port on its own: {@code address="x"} finds the port
+     * that declares x among others, {@code address!="x"} the one that does not.
+     */
+    @Test
+    void shouldSelectAPortByAnyOfItsAddresses() {
+        final long both = input(node("gateway"));
+        final long one = input(node("reader"));
+        require(both, List.of("tb:trades", "tb:quotes"), Domains.NO_DOMAIN);
+        require(one, "tb:quotes", Domains.NO_DOMAIN);
+
+        assertArrayEquals(new long[] {both}, structure.matchedObjectIds("input[address=\"tb:trades\"]").join());
+        assertEquals(2, structure.matchedObjectIds("input[address=\"tb:quotes\"]").join().length);
+        assertArrayEquals(new long[] {one}, structure.matchedObjectIds("input[address!=\"tb:trades\"]").join());
+        assertArrayEquals(new long[] {both}, structure.matchedObjectIds("input[address~\"trades\"]").join());
+        assertEquals(0, structure.matchedObjectIds("input[address=\"tb:quotes tb:trades\"]").join().length);
+    }
+
+    /**
+     * An observation restates the whole set; the links of the addresses it still names stay as
+     * they were, so a view sees only what came and went.
+     */
+    @Test
+    void shouldRedrawOnlyTheLinksOfTheAddressesThatCameOrWent() {
+        final long gateway = input(node("gateway"));
+        final long[] outputs = new long[3];
+        final String[] streams = {"tb:a", "tb:b", "tb:c"};
+        for (int i = 0; i < streams.length; i++) {
+            outputs[i] = output(node("writer-" + i));
+            provide(outputs[i], streams[i], Domains.NO_DOMAIN);
+        }
+        require(gateway, List.of("tb:a", "tb:b"), Domains.NO_DOMAIN);
+        final long kept = linkNamed("tb:b");
+
+        require(gateway, List.of("tb:c", "tb:b", "tb:b"), Domains.NO_DOMAIN);
+
+        assertEquals(NO_LINK, linkNamed("tb:a"));
+        assertEquals(kept, linkNamed("tb:b"));
+        assertNotEquals(NO_LINK, linkBetween(outputs[2], gateway));
+
+        require(gateway, List.of(), Domains.NO_DOMAIN);
+        assertEquals(0, linkIds().length);
+        assertEquals(0, structure.matchedObjectIds("input[role=require]").join().length);
+    }
+
+    /**
+     * One output answers for several addresses, and each requirer meets it through its own.
+     */
+    @Test
+    void shouldFeedSeveralInputsFromOneOutputThatProvidesTheirAddresses() {
+        final long store = output(node("timebase"));
+        structure.run(() -> structure.provide(store, List.of("tb:a", "tb:b"), Domains.NO_DOMAIN)).join();
+        final long readsA = input(node("reader-a"));
+        final long readsB = input(node("reader-b"));
+        require(readsA, "tb:a", Domains.NO_DOMAIN);
+        require(readsB, "tb:b", Domains.NO_DOMAIN);
+
+        assertNotEquals(NO_LINK, linkBetween(store, readsA));
+        assertNotEquals(NO_LINK, linkBetween(store, readsB));
+    }
+
+    @Test
+    void shouldRouteEachAddressOfAPortThatRequiresSeveral() {
+        final int blue = structure.domains().idOf("blue");
+        final int green = structure.domains().idOf("green");
+        final long a = output(node("a-blue"));
+        final long b = output(node("b-blue"));
+        provide(a, "tb:a", blue);
+        provide(b, "tb:b", blue);
+        final long greenIn = input(node("reader-green"));
+        require(greenIn, List.of("tb:a", "tb:b"), green);
+        assertEquals(0, linkIds().length);
+
+        structure.run(() -> structure.allowRoute(green, blue)).join();
+        assertEquals(2, linkIds().length);
+
+        structure.run(() -> structure.denyRoute(green, blue)).join();
+        assertEquals(0, linkIds().length);
     }
 
     @Test

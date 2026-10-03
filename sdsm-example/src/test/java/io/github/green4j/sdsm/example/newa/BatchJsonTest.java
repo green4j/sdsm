@@ -4,6 +4,8 @@ import io.github.green4j.jelly.ByteArray;
 import io.github.green4j.sdsm.BatchSubscriber;
 import io.github.green4j.sdsm.DeliveryPolicy;
 import io.github.green4j.sdsm.Node;
+import io.github.green4j.sdsm.Output;
+import io.github.green4j.sdsm.PropertyKeys;
 import io.github.green4j.sdsm.Structure;
 import io.github.green4j.sdsm.StructureBatch;
 import io.github.green4j.sdsm.StructureRuntime;
@@ -16,6 +18,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -55,18 +58,24 @@ class BatchJsonTest {
                 structure.submit(() -> structure.createNode("aggregator", "pod", "eu-de-1/blue/aggregator")).join();
         final Node release = structure.submit(() -> structure.createNode("blue", "release")).join();
         structure.run(() -> structure.contain(release.id(), pod.id(), "placement")).join();
+        final Output out = structure.submit(() -> structure.addOutput(pod.id(), "trades", "tcp")).join();
         subscribe();
 
         noFailure();
         final String frame = sent.get(0);
         assertTrue(frame.startsWith("{\"view\":\"topology\","), frame);
         assertTrue(frame.contains("\"snapshot\":true"), frame);
-        assertTrue(frame.contains("{\"what\":\"ADDED\",\"id\":" + pod.id()
-                + ",\"kind\":\"NODE\"}"), frame);
-        final List<String> strings = Json.stringsIn(frame);
-        assertEquals("eu-de-1/blue/aggregator", strings.get(strings.indexOf("externalId") + 2), frame);
-        assertTrue(frame.contains("{\"what\":\"CONTAINED\",\"id\":" + pod.id()
-                + ",\"parent\":" + release.id() + "}"), frame);
+        assertTrue(frame.contains("[\"+\"," + pod.id() + ",\"NODE\"]"), frame);
+        assertTrue(frame.contains("[\"p\"," + pod.id() + ","), "one run of its properties: " + frame);
+        assertTrue(frame.contains("," + PropertyKeys.EXTERNAL_ID + ",\"eu-de-1"), frame);
+        assertTrue(Json.stringsIn(frame).contains("eu-de-1/blue/aggregator"), frame);
+        assertTrue(frame.contains("\"" + PropertyKeys.EXTERNAL_ID + "\":\"externalId\""), "keys are named: " + frame);
+        assertFalse(frame.contains("\"" + PropertyKeys.ID + "\":\"id\""), "the change's own id: " + frame);
+        assertFalse(frame.contains("\"" + PropertyKeys.KIND + "\":\"kind\""), "the change's own kind: " + frame);
+        assertTrue(frame.contains("[\"c\"," + pod.id() + "," + release.id() + "]"), frame);
+        assertTrue(frame.contains("[\"+\"," + out.id() + ",\"OUTPUT\"]"), frame);
+        assertFalse(Json.stringsIn(frame).contains("eu-de-1/blue/aggregator>trades"),
+                "a port's external id is its node's, its side and its name: " + frame);
     }
 
     @Test
@@ -87,9 +96,11 @@ class BatchJsonTest {
         final String frame = sent.get(sent.size() - 1);
         assertEquals(2, sent.size(), "one snapshot and one delta");
         assertTrue(frame.contains("\"snapshot\":false"), frame);
-        assertTrue(frame.contains("\"key\":\"pods\",\"value\":3"), frame);
-        assertTrue(frame.contains("\"key\":\"inRate\",\"value\":\"12000.5\""), frame);
-        assertTrue(frame.contains("\"key\":\"live\",\"value\":true"), frame);
+        assertTrue(frame.contains("," + pods + ",3"), frame);
+        assertTrue(frame.contains("," + rate + ",\"12000.5\""), frame);
+        assertTrue(frame.contains("," + live + ",true"), frame);
+        assertTrue(frame.endsWith("\"keys\":{\"" + pods + "\":\"pods\",\"" + rate + "\":\"inRate\",\""
+                + live + "\":\"live\"}}"), "only the keys it uses: " + frame);
     }
 
     @Test
@@ -102,8 +113,7 @@ class BatchJsonTest {
         structure.flushAll().join();
 
         noFailure();
-        assertTrue(sent.get(sent.size() - 1).contains("\"key\":\"backlog\",\"value\":null"),
-                sent.toString());
+        assertTrue(sent.get(sent.size() - 1).contains("," + backlog + ",null"), sent.toString());
     }
 
     /**

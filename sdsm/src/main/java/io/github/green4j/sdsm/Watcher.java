@@ -33,7 +33,8 @@ abstract class Watcher {
      * @return what the selector reads past the object it tests
      */
     static int reachOf(final Selector.Expression selector) {
-        return (selector.readsEnds() ? ENDS : 0) | (selector.readsPlacement() ? PLACEMENT : 0);
+        return (selector.readsEnds() ? ENDS : 0) | (selector.readsOwner() ? OWNER : 0)
+                | (selector.readsPlacement() ? PLACEMENT : 0);
     }
 
     final boolean reaches(final int flag) {

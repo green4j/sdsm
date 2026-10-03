@@ -52,7 +52,7 @@ Three kinds of object, two relations, four mechanisms.
 
 ```
 Object   = Node | Port | Link          each: id, type, name, typed properties; a node or port: externalId?
-Port     = (node, side in | out, declaration?)   declaration = (address, provide | require, domain)
+Port     = (node, side in | out, declaration?)   declaration = (addresses, provide | require, domain)
 Link     = (out port, in port)
 Contain  = (axis, parent node, child node)
 ```
@@ -76,7 +76,7 @@ A set cut by a key is a node per key the structure keeps - `groupBy(name, type, 
 
 - **`id`** - a `long` the structure assigns at creation, unique within it, stable for the life of the object and opaque: the handle every other call takes.
 
-- **`externalId`** - the id the *modelled thing* carries in the world that owns it: a pod's UID, a queue's name. It identifies the original, not the object standing for it, so an object holds it for life and no second object may take it. It is optional: a node the structure drew for an axis of its own models nothing outside and has none. Given when the object is made (`createNode(name, type, externalId)` and its siblings), resolved back through `findByExternalId(externalId)` on the structure's thread, so observing the same thing again reaches the object already standing for it instead of making a second one. It can be selected on.
+- **`externalId`** - the id the *modelled thing* carries in the world that owns it: a pod's UID, a queue's name. It identifies the original, not the object standing for it, so an object holds it for life and no second object may take it. It is optional: a node the structure drew for an axis of its own models nothing outside and has none. Given when a node is made (`createNode(name, type, externalId)`), resolved back through `findByExternalId(externalId)` on the structure's thread, so observing the same thing again reaches the object already standing for it instead of making a second one. It can be selected on. A port has none of its own to give: a port of a node with an external id is known by the node's, its side and its name - `pod-uid-1<in`, `pod-uid-1>trades` (`Port.appendExternalId`) - so a name is one to a side of such a node, and a source measuring the port spells the same id.
 
   Uniqueness is demanded across the whole structure while an id is only unique in its own world, so a structure mirroring two worlds needs the world folded into the id (`k8s:pod:<uid>`) by whoever writes it. The structure stores and compares the id and never reads anything out of it.
 
@@ -90,6 +90,8 @@ A connection is often not observable. A pod's configuration says which queue it 
 
 An address is one opaque text. Matching is equality, so the structure never needs its parts: scheme, host, path and whatever else are the caller's business, spelled into the text handed over. It is an intrinsic property of the port, so a selector finds who is waiting for what: `input[address="tb:trades.eu"]`.
 
+A port may declare several addresses at once - `require(portId, addresses, domainId)`, `provide(...)` alike - each matched on its own, so one input that reads whichever stream of a store it is asked for meets the output of each, and one output that answers for many feeds each of their readers. A link is named by the address it came from. A set is restated whole, in any order: only the links of addresses that came or went are drawn or taken, and an empty one withdraws. The port's `address` shows them sorted, separated by a space; `addressCount()` / `addressAt(i)` give each. A selector compares each on its own: `input[address="tb:trades"]` finds the input that declares it among others, `address!=` one that does not declare it.
+
 A link runs from an output to an input, and that is the whole direction rule: a providing input takes links from requiring outputs, a providing output feeds requiring inputs. A queue is therefore a node of its own, both of whose ports provide the same address - which is what lets `in-rate != out-rate` stand for a backlog, something a single link could not carry.
 
 ### Domains
@@ -102,7 +104,7 @@ Assembly is a layer above the structure: it resolves identity, compares versions
 
 An observation carries the id the thing has in its own world, the area it belongs to, and whatever that world calls this state of it. The version is compared, never read into: an observation repeating a version already materialized costs a lookup and nothing else. The area is the source's own number for a part of the world it can speak for as a whole - when it says `complete(area)`, whatever it had put there and has not mentioned this time round is gone. A source that reports its removals instead says `removed(externalId)` and is never swept.
 
-`Materializer` runs on the structure's thread, inside that transaction, and writes through `Emit` - a class, not an interface anyone can be handed: the structure is not in its reach, so it cannot start a task, wait on one, or read around what it is writing. Every object it names, it names by the id the observed world knows it by, so materializing twice reaches what the first time made.
+`Materializer` runs on the structure's thread, inside that transaction, and writes through `Emit` - a class, not an interface anyone can be handed: the structure is not in its reach, so it cannot start a task, wait on one, or read around what it is writing. Every object it names, it names by the id the observed world knows it by, so materializing twice reaches what the first time made: a node by its own, a port by its node's, its side and its name - so `emit.input(node, name, type)` takes a node with an external id. An observation says where its node is now, so `emit.contain` takes a node from the parent it had on that axis.
 
 An object stays as long as something says it is there. Two clusters putting themselves in the same region both say the region is there, and it outlives the first of them to stop - sweeping takes away what nothing claims any more, not what one thing stopped claiming.
 
@@ -169,7 +171,7 @@ The future completes once the task has run. By then a view delivering `onChange(
 
 ### 8. Selector language as a small DSL
 
-A selector is a kind, `[key op value]` predicates (`=`, `!=`, `~` for a substring, `<` `<=` `>` `>=` between numbers), `under(axis, path)`, `between(e)` and `touching(e)` for links by their ends' nodes, `,` for a union, `&` for an intersection and parentheses: `node[type=service], between(node[type=service])`. It is kept up to date as properties, placement and ends change, and stops short of a query engine on purpose. The grammar is in [`sdsm/README.md`](sdsm/README.md).
+A selector is a kind, `[key op value]` predicates (`=`, `!=`, `~` for a substring, `<` `<=` `>` `>=` between numbers), `under(axis, path)`, `between(e)` and `touching(e)` for links by their ends' nodes, `on(e)` for ports by their node, `,` for a union, `&` for an intersection, `!` for what a term does not hold, `[key]` for a value being there and parentheses: `node[type=service], between(node[type=service])`. It is kept up to date as properties, placement, ends and the nodes of ports change, and stops short of a query engine on purpose. The grammar is in [`sdsm/README.md`](sdsm/README.md).
 
 ### 9. Reserved properties and stable identity
 
@@ -194,11 +196,11 @@ step, each using only what the steps before it showed; `./gradlew :sdsm-example:
 | step | shows |
 |---|---|
 | `B01Objects` | nodes, ports, links, typed properties, queries, cascading removal |
-| `B02Views` | selectors, a snapshot then deltas, key filters, links by their ends, changing a selector |
+| `B02Views` | selectors, a snapshot then deltas, key filters, links by their ends, changing a selector, `[key]`, `!`, the ports of a node |
 | `B03Tasks` | a task as one batch, writers named per task, failed tasks, held deliveries, re-snapshots |
 | `B04Contain` | nodes holding nodes, axes, containment records, what is refused |
-| `B05Identity` | external ids: given at creation, found again, one object at a time |
-| `B06Addresses` | links drawn where addresses meet, domains, routes opened and closed |
+| `B05Identity` | external ids: given to a node at creation, a port known by its node's, found again, one object at a time |
+| `B06Addresses` | links drawn where addresses meet, domains, routes opened and closed, several addresses on one port |
 | `B07Derive` | a node's sum and maximum over its children, nested, with how many are known |
 | `B08OwnKeys` | one value out of what two sources each say about the same thing: a fold over an object's own properties |
 | `B09Feed` | a source and a materializer: versions, sweeping a complete round, a blind source |
