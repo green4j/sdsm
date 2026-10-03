@@ -8,7 +8,10 @@ import io.github.green4j.sdsm.Structure;
 import io.github.green4j.sdsm.StructureRuntime;
 import io.github.green4j.sdsm.View;
 
+import java.util.ArrayList;
 import java.util.Collections;
+import java.util.List;
+import java.util.Map;
 import java.util.function.Consumer;
 
 /**
@@ -70,7 +73,26 @@ public final class B02Views {
 
             out.accept("-- the store is removed");
             structure.run(() -> structure.remove(store[0])).join();
+
+            // A selector answers once, without a view, too.
+            out.accept("-- a job that says nothing about being ready");
+            structure.run(() -> structure.createNode("audit", "job")).join();
+            // What has a value at all.
+            show(structure, "node[ready]", out);
+            // What is not ready - what does not say among it, which [ready!=true] would miss.
+            show(structure, "node & ![ready=true]", out);
+            // The ports of a node, linked or not.
+            show(structure, "on(node[name=ingest])", out);
         }
+    }
+
+    private static void show(final Structure structure, final String selector, final Consumer<String> out) {
+        final List<String> names = new ArrayList<>();
+        for (final Map<String, Object> object : structure.query(selector).join()) {
+            names.add(object.get("kind") + " " + object.get("name"));
+        }
+        Collections.sort(names);
+        out.accept(selector + " " + names);
     }
 
     private B02Views() {

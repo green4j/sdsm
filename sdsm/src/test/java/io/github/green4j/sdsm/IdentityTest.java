@@ -84,12 +84,14 @@ class IdentityTest {
 
     @Test
     void shouldFreeTheKeyOfAnObjectRemovedInACascade() {
-        final Node node = structure.submit(() -> structure.createNode("ingest-0", "pod")).join();
-        structure.submit(() -> structure.addOutput(node.id(), "out", "tcp", "port-uid-1")).join();
+        final Node node = structure.submit(() -> structure.createNode("ingest-0", "pod", "pod-uid-1")).join();
+        structure.submit(() -> structure.addOutput(node.id(), "out", "tcp")).join();
+        assertNotNull(structure.submit(() -> structure.findByExternalId("pod-uid-1>out")).join(),
+                "a port is known by its node's id, its side and its name");
 
         structure.run(() -> structure.remove(node.id())).join();
 
-        assertNull(structure.submit(() -> structure.findByExternalId("port-uid-1")).join());
+        assertNull(structure.submit(() -> structure.findByExternalId("pod-uid-1>out")).join());
     }
 
     @Test

@@ -45,14 +45,14 @@ public interface Source<O extends Observation> {
     /**
      * Says an observation could not be materialized, on the loop thread, before it is handed
      * back. What was written before the failure stays and belongs to the observation's area; the
-     * version is not remembered, so saying it again is tried again.
+     * version is not remembered, so saying it again is tried again. Every source says what
+     * becomes of it: a failure is never silent.
      *
      * @param observation the observation, or null when what failed was not one: the materializer
      *                    saying a change of state, or a batch the structure would not take
      * @param reason      why
      */
-    default void rejected(final O observation, final Throwable reason) {
-    }
+    void rejected(O observation, Throwable reason);
 
     /**
      * Hands an observation back once assembly is done with it, on the loop thread.

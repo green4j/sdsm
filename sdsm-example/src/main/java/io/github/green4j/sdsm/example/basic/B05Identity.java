@@ -12,8 +12,9 @@ import java.util.function.Consumer;
 /**
  * An object has two ids. The structure's is a number it hands out and never reuses; the
  * external id is what the modelled thing is called in the world that owns it - a pod's uid,
- * a deployment's name - and is how a writer finds the object again. It is given when the
- * object is made, or never, and one external id stands for one object at a time.
+ * a deployment's name - and is how a writer finds the object again. A node is given it when it
+ * is made, or never; a port of such a node is known by the node's, its side and its name -
+ * {@code uid-1>out}. One external id stands for one object at a time.
  */
 public final class B05Identity {
 
@@ -26,13 +27,13 @@ public final class B05Identity {
             final Structure structure = runtime.newStructure();
 
             final Node pod = structure.submit(() -> structure.createNode("ingest-7f9c", "pod", "uid-1")).join();
-            final Output port = structure.submit(() -> structure.addOutput(pod.id(), "out", "tcp", "uid-1/out")).join();
+            final Output port = structure.submit(() -> structure.addOutput(pod.id(), "out", "tcp")).join();
             out.accept("pod " + structure.snapshotObject(pod.id()).join());
             out.accept("port " + structure.snapshotObject(port.id()).join());
 
             // Found by what the world calls it, on the structure's thread.
             out.accept("uid-1 is " + find(structure, "uid-1"));
-            out.accept("uid-1/out is " + find(structure, "uid-1/out"));
+            out.accept("uid-1>out is " + find(structure, "uid-1>out"));
             out.accept("uid-2 is " + find(structure, "uid-2"));
 
             out.accept("-- the same uid again");
@@ -46,7 +47,7 @@ public final class B05Identity {
             out.accept("-- the pod is removed and made again");
             structure.run(() -> structure.remove(pod.id())).join();
             out.accept("uid-1 is " + find(structure, "uid-1"));
-            out.accept("uid-1/out is " + find(structure, "uid-1/out"));
+            out.accept("uid-1>out is " + find(structure, "uid-1>out"));
             structure.submit(() -> structure.createNode("ingest-7f9c", "pod", "uid-1")).join();
             out.accept("uid-1 is " + find(structure, "uid-1"));
         }

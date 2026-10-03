@@ -84,7 +84,11 @@ class StepsTest {
             "around ingest batch",
             "  REMOVED LINK 7",
             "  REMOVED OUTPUT 5",
-            "  REMOVED INPUT 6");
+            "  REMOVED INPUT 6",
+            "-- a job that says nothing about being ready",
+            "node[ready] [NODE ingest]",
+            "node & ![ready=true] [NODE audit]",
+            "on(node[name=ingest]) [OUTPUT out]");
 
     private static final List<String> B03_TASKS = List.of(
             "nodes snapshot",
@@ -173,16 +177,16 @@ class StepsTest {
 
     private static final List<String> B05_IDENTITY = List.of(
             "pod {id=0, name=ingest-7f9c, type=pod, kind=NODE, externalId=uid-1}",
-            "port {id=1, name=out, type=tcp, kind=OUTPUT, externalId=uid-1/out, node=0, links"
+            "port {id=1, name=out, type=tcp, kind=OUTPUT, externalId=uid-1>out, node=0, links"
                     + "=0}",
             "uid-1 is NODE(0, ingest-7f9c)",
-            "uid-1/out is OUTPUT(1, out)",
+            "uid-1>out is OUTPUT(1, out)",
             "uid-2 is nothing",
             "-- the same uid again",
             "refused: External id 'uid-1' is already held by object 0",
             "-- the pod is removed and made again",
             "uid-1 is nothing",
-            "uid-1/out is nothing",
+            "uid-1>out is nothing",
             "uid-1 is NODE(2, ingest-7f9c)");
 
     private static final List<String> B06_ADDRESSES = List.of(
@@ -208,6 +212,20 @@ class StepsTest {
             "-- and no longer",
             "  blue-writer -> blue-reader (orders)",
             "  green-writer -> green-reader (orders)",
+            "  market -> blue-reader (prices)",
+            "  market -> green-reader (prices)",
+            "-- an archive reads news and prices through one input",
+            "  blue-writer -> blue-reader (orders)",
+            "  green-writer -> green-reader (orders)",
+            "  market -> archive (prices)",
+            "  market -> blue-reader (prices)",
+            "  market -> green-reader (prices)",
+            "  news -> archive (news)",
+            "who reads prices: [archive, blue-reader, green-reader]",
+            "-- the archive keeps prices only",
+            "  blue-writer -> blue-reader (orders)",
+            "  green-writer -> green-reader (orders)",
+            "  market -> archive (prices)",
             "  market -> blue-reader (prices)",
             "  market -> green-reader (prices)");
 

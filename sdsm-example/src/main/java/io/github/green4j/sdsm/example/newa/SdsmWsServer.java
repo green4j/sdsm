@@ -43,7 +43,7 @@ public final class SdsmWsServer {
     private static final String VIEW = "topology";
 
     // What a connection may cost, for the memory budget. The largest frame is a snapshot, and no
-    // view is larger than "*", whose snapshot of the shop is 17 KB. A session renders a
+    // view is larger than "*", whose snapshot of the shop is 3 KB. A session renders a
     // snapshot into a buffer of its own that grows to twice that, and its interest is bounded by
     // the frame that said it.
     private static final int LARGEST_FRAME = 128 * 1024;

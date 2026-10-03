@@ -85,6 +85,13 @@ public final class B10Demand {
         }
 
         @Override
+        public void rejected(final Stream observation, final Throwable reason) {
+            System.err.println("not materialized: "
+                    + (observation != null ? observation.externalId() : "a change of state"));
+            reason.printStackTrace(System.err);
+        }
+
+        @Override
         public Map<String, DetailLevel> suppliedProperties() {
             return Collections.singletonMap("backlog", DetailLevel.FINE);
         }

@@ -6,15 +6,16 @@ A selector picks objects from a `Structure`. It defines what a view holds and wh
 `matchedObjectIds` return, and it is kept up to date as the objects it reads change. It combines:
 
 - a **kind** filter: `node`, `link`, `input`, `output`, `*`;
-- **property predicates**: `[zone=eu]`, `[cpu>80]`;
+- **property predicates**: `[zone=eu]`, `[cpu>80]`, `[status]` for a value being there;
 - **placement**: `under(placement, /eu-de/*)`, what lies below a path on an axis;
 - **the ends of links**: `between(e)` and `touching(e)`, links whose nodes `e` selects;
-- boolean composition: `&` AND, `,` OR, parentheses.
+- **the ports of nodes**: `on(e)`, ports whose nodes `e` selects;
+- boolean composition: `&` AND, `,` OR, `!` NOT, parentheses.
 
 It is minimal, side-effect-free and parsed in one pass. An empty selector selects everything.
 
 A selector is parsed into a tree of terms, read once for what it depends on - which keys, which
-kinds, placement, the ends of links - and compiled into the predicate the engine runs. A write
+kinds, placement, the ends of links, the nodes of ports - and compiled into the predicate the engine runs. A write
 to a property a view's selector does not read never re-evaluates that view.
 
 ### EBNF Grammar
@@ -24,9 +25,11 @@ selector              = [ expression ] ;                          (* empty: ever
 
 expression            = term , { "," , term } ;                   (* OR *)
 term                  = factor , { "&" , factor } ;               (* AND *)
-factor                = "(" , expression , ")"
+factor                = "!" , factor                            (* NOT *)
+                      | "(" , expression , ")"
                       | under
                       | ends
+                      | on
                       | kindLiteral , { propertyPredicate }
                       | propertyPredicate , { propertyPredicate } ;
 
@@ -37,8 +40,9 @@ axis                  = identifier ;
 path                  = ? a Path, as Path.parse reads it; a ")" inside is written "\)" ? ;
 
 ends                  = ( "between" | "touching" ) , "(" , expression , ")" ;
+on                    = "on" , "(" , expression , ")" ;
 
-propertyPredicate     = "[" , propertyKey , operator , propertyValue , "]" ;
+propertyPredicate     = "[" , propertyKey , [ operator , propertyValue ] , "]" ;   (* [key]: present *)
 propertyKey           = identifier ;
 operator              = "=" | "!=" | "~" | "<" | "<=" | ">" | ">=" ;
 propertyValue         = quotedString | bareword ;
@@ -85,7 +89,12 @@ digit                 = ? a Unicode digit ? ;
 
 `[key OP value]` reads the property `key` of the object. The key is any property, including the
 intrinsic ones every object answers from its own fields - listed in the
-[top-level README](../README.md#9-reserved-properties-and-stable-identity).
+[top-level README](../README.md#9-reserved-properties-and-stable-identity). `[key]` holds an
+object that has a value under `key`, whatever it is.
+
+A port that declares several addresses is compared one address at a time:
+`input[address="tb:trades"]` holds an input that declares it among others, `[address~"trades"]`
+one with any address containing it, and `[address!="tb:trades"]` one that does not declare it.
 
 **An absent property matches nothing** - under every operator, `!=` included. `[cpu!=0]` holds no
 object whose `cpu` is not there: a value nobody supplies is unknown, not different.
@@ -99,6 +108,7 @@ A literal is read by how it is written, whether quoted or not:
 | Operator | Meaning |
 |---|---|
 | `=` | equal. A whole value equals a whole literal exactly, and never a fraction: `[replicas=1.5]` does not hold `1`, `[replicas=1.0]` does. A decimal value is compared as a `double`. Text and `true` / `false` are compared as text. |
+| none - `[key]` | the value is there, whatever it is |
 | `!=` | not `=`, for a present value |
 | `~` | the value, as text, contains the literal; case-sensitive |
 | `<` `<=` `>` `>=` | numeric order. The literal must be a number, or the selector is refused; a value that is not a number - text, a boolean, `NaN` - holds none of them. |
@@ -131,12 +141,28 @@ node[name=ingest], touching(node[name=ingest])    -- one node and every link at 
 They are kept up to date as the nodes change. A view holding a link also delivers the two ports
 it joins.
 
+#### The ports of nodes
+
+- `on(e)` holds the ports of the nodes `e` holds, linked or not, kept up to date as the nodes
+  change and move.
+
+```
+node & under(placement, /eu), on(node & under(placement, /eu))   -- the nodes of a region and all their ports
+```
+
 #### Composition
 
 - `A & B` - both hold.
 - `A , B` - either holds.
 - `(...)` - grouping.
-- `&` binds tighter than `,`: `a & b , c & d` is `(a & b) , (c & d)`.
+- `!A` - `A` does not hold.
+- `!` binds tightest, then `&`, then `,`: `!a & b , c` is `((!a) & b) , c`.
+
+`!` negates the whole term, so unlike `!=` it holds what has no value at all: `![status=DOWN]`
+holds an object with no `status`, `[status!=DOWN]` does not; `!*[status]` is what has none. It holds
+every kind - `!node` is every link and port too - so it is mostly used after `&`. It follows what
+it negates as that changes: `node & !under(placement, /eu-de/green)` takes in a node the moment it
+leaves green.
 
 #### Quoting and escapes
 
@@ -168,6 +194,9 @@ literal that is not a number, `under` without a path.
 node                                            -- all nodes
 node[zone=eu] & [status!=DOWN]                  -- nodes in eu that are not DOWN
 node[zone=eu] , link[type=tcp]                  -- eu nodes, or tcp links
+node & ![status=DOWN]                           -- nodes not DOWN, those with no status among them
+input & !*[address]                             -- inputs that declare no address
+node[type=pod] & !under(placement, /eu-de/blue) -- pods outside blue
 (node , link) & [owner~"team-"]                 -- nodes or links whose owner contains "team-"
 node[cpu>80] & [load<=0.9]                      -- numeric order
 input[address="tb:trades.eu"]                   -- who is waiting for an address

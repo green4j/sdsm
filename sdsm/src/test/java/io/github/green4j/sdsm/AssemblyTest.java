@@ -536,6 +536,27 @@ class AssemblyTest {
         assertNull(objectWithExternalId("scratch:pod-2"), "nobody says it");
     }
 
+    /**
+     * An observation says where its node is now: a pod that went to another cluster is taken from
+     * under the one it was in, and the cluster nothing holds any more is swept.
+     */
+    @Test
+    void shouldMoveANodeWhereItsObservationNowPutsIt() {
+        final Pushed source = new Pushed();
+        final Feed<Pod> feed = loop.attach(1, source, (pod, emit) ->
+                new Placement("eu-de", "eu-de-" + pod.version).materialize(pod, emit));
+
+        source.see("pod-1", "1", AREA_A);
+        feed.complete(AREA_A);
+        awaitState(feed, FeedState.CONVERGED);
+        source.see("pod-1", "2", AREA_A);
+        feed.complete(AREA_A);
+        Await.until(() -> objectWithExternalId("cluster:eu-de-1") == null);
+
+        assertEquals(1, count("node[type=pod] & under(placement, /eu-de/eu-de-2)"));
+        assertEquals(List.of(), source.rejected);
+    }
+
     private CountDownLatch holdTheLoop() {
         final CountDownLatch held = new CountDownLatch(1);
         loop.execute(() -> {
