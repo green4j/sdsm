@@ -13,7 +13,7 @@ import java.util.Locale;
  * <pre>
  * {"op":"subscribe","view":"topology"}
  * {"op":"unsubscribe","view":"topology"}
- * {"op":"interest","base":"COARSE","overrides":{"eu-de-1/blue/aggregator":"OFF"}}
+ * {"op":"interest","base":"COARSE","overrides":{"payments":"OFF"}}
  * </pre>
  * Reused: a frame is acted on before the next one is read, because both happen on the
  * session's own event loop, and what arrives there is valid only for the length of the call.

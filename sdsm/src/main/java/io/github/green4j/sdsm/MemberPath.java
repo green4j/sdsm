@@ -2,7 +2,7 @@ package io.github.green4j.sdsm;
 
 /**
  * Where a value is read, starting at a member of a group: on the member itself, on the object
- * one of its intrinsic ids names - {@code from.rate}, the port a link runs from - or on its
+ * one of its intrinsic ids names - {@code $from.rate}, the port a link runs from - or on its
  * parent on an axis, {@code parent(placement).region}; {@code parent(placement)} alone is the
  * parent's id.
  */
@@ -67,7 +67,7 @@ final class MemberPath {
             }
             hop = hopOf(text.substring(0, dot));
             if (hop == null) {
-                throw new IllegalArgumentException("A path is <key>, <from|to|node>.<key> or parent(<axis>)"
+                throw new IllegalArgumentException("A path is <key>, <$from|$to|$node>.<key> or parent(<axis>)"
                         + " and a key: " + text);
             }
         }
@@ -79,11 +79,11 @@ final class MemberPath {
 
     private static Hop hopOf(final String name) {
         switch (name) {
-            case "from":
+            case "$from":
                 return Hop.FROM;
-            case "to":
+            case "$to":
                 return Hop.TO;
-            case "node":
+            case "$node":
                 return Hop.NODE;
             default:
                 return null;

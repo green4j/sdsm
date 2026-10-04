@@ -24,18 +24,18 @@ class OwnKeysTest {
     private final int metrics = structure.propertyKeys().idOf("health.metrics");
 
     private Node release;
-    private Node aggregator;
+    private Node billing;
     private Node stream;
 
     @BeforeEach
     void layOut() {
         release = structure.submit(() -> structure.createNode("blue", "release")).join();
-        aggregator = structure.submit(() -> structure.createNode("aggregator", "service")).join();
+        billing = structure.submit(() -> structure.createNode("billing", "service")).join();
         stream = structure.submit(() -> structure.createNode("stream", "service")).join();
-        structure.run(() -> structure.contain(release.id(), aggregator.id(), "placement")).join();
+        structure.run(() -> structure.contain(release.id(), billing.id(), "placement")).join();
         structure.run(() -> structure.contain(release.id(), stream.id(), "placement")).join();
         structure.run(() -> {
-            structure.derive(aggregator.id(), health, Fold.MAX, Over.keys(k8s, metrics));
+            structure.derive(billing.id(), health, Fold.MAX, Over.keys(k8s, metrics));
             structure.derive(stream.id(), health, Fold.MAX, Over.keys(k8s, metrics));
             structure.derive(release.id(), health, Fold.MAX, Over.children(health, "service"));
         }).join();
@@ -48,16 +48,16 @@ class OwnKeysTest {
 
     @Test
     void shouldTakeTheWorstOfWhatIsSaidAndCarryItUp() {
-        assertFalse(structure.snapshotObject(aggregator.id()).join().containsKey("health"));
+        assertFalse(structure.snapshotObject(billing.id()).join().containsKey("health"));
 
-        set(aggregator, k8s, 0L);
-        set(aggregator, metrics, 2L);
+        set(billing, k8s, 0L);
+        set(billing, metrics, 2L);
         set(stream, k8s, 1L);
-        assertEquals(2L, structure.snapshotObject(aggregator.id()).join().get("health"));
+        assertEquals(2L, structure.snapshotObject(billing.id()).join().get("health"));
         assertEquals(2L, structure.snapshotObject(release.id()).join().get("health"));
 
-        structure.run(() -> structure.removeProperty(aggregator.id(), metrics)).join();
-        assertEquals(0L, structure.snapshotObject(aggregator.id()).join().get("health"));
+        structure.run(() -> structure.removeProperty(billing.id(), metrics)).join();
+        assertEquals(0L, structure.snapshotObject(billing.id()).join().get("health"));
         assertEquals(1L, structure.snapshotObject(release.id()).join().get("health"));
     }
 
@@ -69,9 +69,9 @@ class OwnKeysTest {
     void shouldRefuseToFoldWhatIsDerivedOrDeriveWhatIsFolded() {
         final int worst = structure.propertyKeys().idOf("worst");
         assertRejected(() -> structure.run(() -> structure.derive(
-                aggregator.id(), worst, Fold.MAX, Over.keys(health))).join());
+                billing.id(), worst, Fold.MAX, Over.keys(health))).join());
         assertRejected(() -> structure.run(() -> structure.derive(
-                aggregator.id(), k8s, Fold.MAX, Over.keys(metrics))).join());
+                billing.id(), k8s, Fold.MAX, Over.keys(metrics))).join());
     }
 
     /**

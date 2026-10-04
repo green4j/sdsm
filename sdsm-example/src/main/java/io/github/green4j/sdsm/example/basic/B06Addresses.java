@@ -6,6 +6,7 @@ import io.github.green4j.sdsm.StructureRuntime;
 
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletionException;
@@ -107,7 +108,7 @@ public final class B06Addresses {
     }
 
     private static long input(final Structure structure, final String service, final String name) {
-        final long[] found = structure.matchedObjectIds("node[name=" + service + "]").join();
+        final long[] found = structure.matchedObjectIds("node[$name=" + service + "]").join();
         final long node = found.length > 0
                 ? found[0]
                 : structure.submit(() -> structure.createNode(service, "service")).join().id();
@@ -127,10 +128,10 @@ public final class B06Addresses {
     private static List<String> links(final Structure structure) {
         final List<String> links = new ArrayList<>();
         for (final Map<String, Object> link : structure.query("link").join()) {
-            final Map<String, Object> from = port(structure, link.get("from"));
-            final Map<String, Object> to = port(structure, link.get("to"));
+            final Map<String, Object> from = port(structure, link.get("$from"));
+            final Map<String, Object> to = port(structure, link.get("$to"));
             links.add(nodeName(structure, from) + " -> " + nodeName(structure, to)
-                    + " (" + link.get("name") + ")");
+                    + " (" + link.get("$name") + ")");
         }
         Collections.sort(links);
         return links;
@@ -138,10 +139,10 @@ public final class B06Addresses {
 
     private static List<Object> readers(final Structure structure, final String address) {
         final List<Object> readers = new ArrayList<>();
-        for (final Map<String, Object> input : structure.query("input[address=" + address + "]").join()) {
+        for (final Map<String, Object> input : structure.query("input[$address=" + address + "]").join()) {
             readers.add(nodeName(structure, input));
         }
-        Collections.sort(readers, (a, b) -> a.toString().compareTo(b.toString()));
+        readers.sort(Comparator.comparing(Object::toString));
         return readers;
     }
 
@@ -150,7 +151,7 @@ public final class B06Addresses {
     }
 
     private static Object nodeName(final Structure structure, final Map<String, Object> port) {
-        return structure.snapshotObject((Long) port.get("node")).join().get("name");
+        return structure.snapshotObject((Long) port.get("$node")).join().get("$name");
     }
 
     private B06Addresses() {

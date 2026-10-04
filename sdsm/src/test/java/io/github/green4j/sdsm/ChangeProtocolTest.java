@@ -110,10 +110,9 @@ class ChangeProtocolTest {
         Props.setText(structure, alpha.id(), "state", "running");
         subscribe();
 
-        assertEquals("Alpha", recorder.latestValueOf(alpha.id(), "name"));
-        assertEquals("pod", recorder.latestValueOf(alpha.id(), "type"));
-        assertEquals("NODE", recorder.latestValueOf(alpha.id(), "kind"));
-        assertEquals(Long.toString(alpha.id()), recorder.latestValueOf(alpha.id(), "id"));
+        assertEquals("Alpha", recorder.latestValueOf(alpha.id(), "$name"));
+        assertEquals("pod", recorder.latestValueOf(alpha.id(), "$type"));
+        assertEquals(Long.toString(alpha.id()), recorder.latestValueOf(alpha.id(), "$id"));
     }
 
     /**
@@ -129,10 +128,10 @@ class ChangeProtocolTest {
                 structure.submit(() -> structure.createLink("edge", "flow", from.id(), to.id())).join();
         subscribeTo("*");
 
-        assertEquals(Long.toString(alpha.id()), recorder.latestValueOf(from.id(), "node"));
-        assertEquals(Long.toString(beta.id()), recorder.latestValueOf(to.id(), "node"));
-        assertEquals(Long.toString(from.id()), recorder.latestValueOf(edge.id(), "from"));
-        assertEquals(Long.toString(to.id()), recorder.latestValueOf(edge.id(), "to"));
+        assertEquals(Long.toString(alpha.id()), recorder.latestValueOf(from.id(), "$node"));
+        assertEquals(Long.toString(beta.id()), recorder.latestValueOf(to.id(), "$node"));
+        assertEquals(Long.toString(from.id()), recorder.latestValueOf(edge.id(), "$from"));
+        assertEquals(Long.toString(to.id()), recorder.latestValueOf(edge.id(), "$to"));
     }
 
     @Test
@@ -147,7 +146,7 @@ class ChangeProtocolTest {
 
         write(() -> structure.retargetLinkTo(edge.id(), other.id()));
 
-        assertEquals(Long.toString(other.id()), recorder.latestValueOf(edge.id(), "to"));
+        assertEquals(Long.toString(other.id()), recorder.latestValueOf(edge.id(), "$to"));
     }
 
     /**

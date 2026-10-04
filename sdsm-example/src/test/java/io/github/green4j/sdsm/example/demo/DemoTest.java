@@ -16,12 +16,12 @@ class DemoTest {
             for (int i = 0; i < 2 * World.CYCLE; i++) {
                 demo.tick();
 
-                assertEquals(count(demo, "node[type=service]"),
+                assertEquals(count(demo, "node[$type=service]"),
                         demo.view().ofType(Shop.SERVICE).size());
                 assertEquals(count(demo, "link"), demo.view().links().size());
                 for (final Map<String, Object> service
-                        : demo.structure().query("node[type=service]").join()) {
-                    final String name = (String) service.get("name");
+                        : demo.structure().query("node[$type=service]").join()) {
+                    final String name = (String) service.get("$name");
                     assertEquals(service.get("status"),
                             demo.view().byExternalId(name).textOf("status"));
                     assertTrue(screen.render(demo.world().now(), null).contains(name));

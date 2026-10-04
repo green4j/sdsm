@@ -13,7 +13,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * A view of one part of an axis - a silo, a namespace, a day - selects by where objects are
+ * A view of one part of an axis - a cell, a namespace, a rack - selects by where objects are
  * placed rather than by a property copied onto them, and follows them as they move between
  * groups, alone or with the group that carries them.
  */
@@ -33,11 +33,11 @@ class UnderTest {
     @BeforeEach
     void place() {
         region = structure.submit(() -> structure.createNode("eu-de", "region")).join().id();
-        blue = structure.submit(() -> structure.createNode("blue", "silo")).join().id();
-        green = structure.submit(() -> structure.createNode("green", "silo")).join().id();
+        blue = structure.submit(() -> structure.createNode("blue", "cell")).join().id();
+        green = structure.submit(() -> structure.createNode("green", "cell")).join().id();
         structure.run(() -> structure.contain(region, blue, "placement")).join();
         structure.run(() -> structure.contain(region, green, "placement")).join();
-        day = structure.submit(() -> structure.createNode("td-1", "tradingday")).join().id();
+        day = structure.submit(() -> structure.createNode("rack-1", "rack")).join().id();
         structure.run(() -> structure.contain(green, day, "placement")).join();
         ingest = structure.submit(() -> structure.createNode("ingest-0", "pod")).join().id();
         structure.run(() -> structure.contain(blue, ingest, "placement")).join();
@@ -52,9 +52,9 @@ class UnderTest {
 
     @Test
     void shouldSelectWhatLiesUnderAPath() {
-        assertEquals(List.of(ingest), matched("node[type=pod] & under(placement, /eu-de/blue)"));
-        assertEquals(List.of(ingest, query), matched("node[type=pod] & under(placement, /eu-de/*)"));
-        assertEquals(List.of(query), matched("under(placement, /region:eu-de/silo:*/tradingday:*)"));
+        assertEquals(List.of(ingest), matched("node[$type=pod] & under(placement, /eu-de/blue)"));
+        assertEquals(List.of(ingest, query), matched("node[$type=pod] & under(placement, /eu-de/*)"));
+        assertEquals(List.of(query), matched("under(placement, /region:eu-de/cell:*/rack:*)"));
         assertEquals(List.of(blue, green, day, ingest, query), matched("under(placement, /eu-de)"));
         assertEquals(List.of(ingest), matched("under(placement, /eu-de/#" + blue + ")"));
         assertEquals(List.of(), matched("under(stage, /eu-de)"));
@@ -62,7 +62,7 @@ class UnderTest {
 
     @Test
     void shouldFollowAnObjectThatMoves() {
-        subscribeTo("node[type=pod] & under(placement, /eu-de/green)");
+        subscribeTo("node[$type=pod] & under(placement, /eu-de/green)");
         assertEquals(List.of(query), recorder.idsInSnapshot(ChangeKind.ADDED));
 
         structure.run(() -> structure.uncontain(blue, ingest)).join();
@@ -77,7 +77,7 @@ class UnderTest {
 
     @Test
     void shouldFollowAnObjectThatMovesOutOfWhatIsNegated() {
-        subscribeTo("node[type=pod] & !under(placement, /eu-de/green)");
+        subscribeTo("node[$type=pod] & !under(placement, /eu-de/green)");
         assertEquals(List.of(ingest), recorder.idsInSnapshot(ChangeKind.ADDED));
 
         structure.run(() -> structure.uncontain(green, day)).join();
@@ -92,7 +92,7 @@ class UnderTest {
 
     @Test
     void shouldFollowWhatAGroupCarries() {
-        subscribeTo("node[type=pod] & under(placement, /eu-de/blue)");
+        subscribeTo("node[$type=pod] & under(placement, /eu-de/blue)");
 
         structure.run(() -> structure.uncontain(green, day)).join();
         structure.run(() -> structure.contain(blue, day, "placement")).join();

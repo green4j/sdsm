@@ -33,43 +33,43 @@ public final class B08OwnKeys {
 
             final Node cluster = structure.submit(() -> structure.createNode("eu-de-1", "cluster")).join();
             final Node orders = structure.submit(() -> structure.createNode("orders", "stream")).join();
-            final Node trades = structure.submit(() -> structure.createNode("trades", "stream")).join();
+            final Node shipments = structure.submit(() -> structure.createNode("shipments", "stream")).join();
             // The worse of the two answers stands for the stream, and the cluster sums them.
             structure.run(() -> {
-                for (final Node stream : new Node[]{orders, trades}) {
+                for (final Node stream : new Node[]{orders, shipments}) {
                     structure.contain(cluster.id(), stream.id(), "placement");
                     structure.derive(stream.id(), backlog, Fold.MAX, Over.keys(byBroker, byExporter));
                 }
                 structure.derive(cluster.id(), backlog, Fold.SUM, Over.children(backlog, "stream"));
             }).join();
-            print(structure, out, orders, trades, cluster);
+            print(structure, out, orders, shipments, cluster);
 
             out.accept("-- the broker answers");
             structure.run(BROKER, () -> {
                 structure.setLong(orders.id(), byBroker, 100L);
-                structure.setLong(trades.id(), byBroker, 20L);
+                structure.setLong(shipments.id(), byBroker, 20L);
             }).join();
-            print(structure, out, orders, trades, cluster);
+            print(structure, out, orders, shipments, cluster);
 
             out.accept("-- the exporter answers, and sees more on orders");
             structure.run(EXPORTER, () -> {
                 structure.setLong(orders.id(), byExporter, 130L);
-                structure.setLong(trades.id(), byExporter, 10L);
+                structure.setLong(shipments.id(), byExporter, 10L);
             }).join();
-            print(structure, out, orders, trades, cluster);
+            print(structure, out, orders, shipments, cluster);
 
             out.accept("-- the exporter no longer answers on orders");
             structure.run(EXPORTER, () -> structure.removeProperty(orders.id(), byExporter))
                     .join();
-            print(structure, out, orders, trades, cluster);
+            print(structure, out, orders, shipments, cluster);
         }
     }
 
     private static void print(final Structure structure, final Consumer<String> out,
-                              final Node orders, final Node trades, final Node cluster) {
-        for (final Node stream : new Node[]{orders, trades}) {
+                              final Node orders, final Node shipments, final Node cluster) {
+        for (final Node stream : new Node[]{orders, shipments}) {
             final Map<String, Object> held = structure.snapshotObject(stream.id()).join();
-            out.accept("  " + held.get("name")
+            out.accept("  " + held.get("$name")
                     + " broker=" + held.getOrDefault("backlog.broker", "-")
                     + " exporter=" + held.getOrDefault("backlog.exporter", "-")
                     + " backlog=" + held.getOrDefault("backlog", "-"));

@@ -38,7 +38,7 @@ public final class SdsmWsServer {
 
     public static final int API_VERSION = 1;
     public static final String HOST = "127.0.0.1";
-    public static final int PORT = 9020;
+    public static final int PORT = 9030;
 
     private static final String VIEW = "topology";
 
@@ -123,7 +123,7 @@ public final class SdsmWsServer {
             System.out.println("    {\"op\":\"unsubscribe\",\"view\":\"topology\"}");
             System.out.printf("  curl -s http://%s:%d/v1/views%n", HOST, PORT);
             System.out.printf("  curl -s http://%s:%d/v1/views -d name=services"
-                    + " --data-urlencode 'selector=node[type=service]' -d keys=status%n", HOST, PORT);
+                    + " --data-urlencode 'selector=node[$type=service]' -d keys=status%n", HOST, PORT);
             System.out.printf("  curl -s -X DELETE http://%s:%d/v1/views/services%n", HOST, PORT);
             return server;
         });

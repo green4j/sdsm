@@ -3,8 +3,8 @@ package io.github.green4j.sdsm;
 import java.util.List;
 
 /**
- * A primary object: it owns ports, and may hold nodes on one axis - a region its silos, a silo
- * its components, a component what it runs on - folding them into properties of its own.
+ * A primary object: it owns ports, and may hold nodes on one axis - a region its zones, a zone
+ * its services, a service what it runs on - folding them into properties of its own.
  */
 public final class Node extends StructureObject {
 

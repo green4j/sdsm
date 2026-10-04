@@ -50,7 +50,7 @@ public final class Over {
 
     /**
      * @param path what to read off each member of a group: its own property, {@code rate}, or
-     *             its end's, {@code from.rate} - the port a link runs from
+     *             its end's, {@code $from.rate} - the port a link runs from
      * @return a fold over the members of the group a {@link Grouping} made
      */
     public static Over members(final String path) {

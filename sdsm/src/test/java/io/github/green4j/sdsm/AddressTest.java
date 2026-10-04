@@ -72,22 +72,39 @@ class AddressTest {
         return NO_LINK;
     }
 
+    /**
+     * What the structure keeps is named apart from what it is told: a port's {@code $role} links
+     * it, and a {@code role} of its own is the caller's, the same word and not the same key.
+     */
+    @Test
+    void shouldKeepItsOwnKeysApartFromTheCallers() {
+        final long consumer = input(node("process"));
+        require(consumer, "mq:orders", Domains.NO_DOMAIN);
+        Props.setText(structure, consumer, "role", "cursor");
+        provide(output(node("ingest")), "mq:orders", Domains.NO_DOMAIN);
+
+        assertEquals(1, linkIds().length);
+        assertArrayEquals(new long[] {consumer},
+                structure.matchedObjectIds("input[$role=require][role=cursor]").join());
+        assertThrows(IllegalArgumentException.class, () -> structure.propertyKeys().idOf("$cursor"));
+    }
+
     @ParameterizedTest(name = "provider first: {0}")
     @ValueSource(booleans = {true, false})
     void shouldLinkTheTwoSidesInWhicheverOrderTheyCome(final boolean providerFirst) {
         final long producer = output(node("ingest"));
-        final long consumer = input(node("aggregate"));
+        final long consumer = input(node("process"));
 
         if (providerFirst) {
-            provide(producer, "tb:trades.eu", Domains.NO_DOMAIN);
+            provide(producer, "mq:orders.eu", Domains.NO_DOMAIN);
         } else {
-            require(consumer, "tb:trades.eu", Domains.NO_DOMAIN);
+            require(consumer, "mq:orders.eu", Domains.NO_DOMAIN);
         }
         assertEquals(0, linkIds().length);
         if (providerFirst) {
-            require(consumer, "tb:trades.eu", Domains.NO_DOMAIN);
+            require(consumer, "mq:orders.eu", Domains.NO_DOMAIN);
         } else {
-            provide(producer, "tb:trades.eu", Domains.NO_DOMAIN);
+            provide(producer, "mq:orders.eu", Domains.NO_DOMAIN);
         }
 
         assertEquals(1, linkIds().length);
@@ -101,16 +118,16 @@ class AddressTest {
      */
     @Test
     void shouldJoinProducerAndConsumerThroughAMedium() {
-        final long medium = node("trades");
+        final long medium = node("orders");
         final long into = input(medium);
         final long outOf = output(medium);
-        provide(into, "tb:trades.eu", Domains.NO_DOMAIN);
-        provide(outOf, "tb:trades.eu", Domains.NO_DOMAIN);
+        provide(into, "mq:orders.eu", Domains.NO_DOMAIN);
+        provide(outOf, "mq:orders.eu", Domains.NO_DOMAIN);
 
         final long producer = output(node("ingest"));
-        final long consumer = input(node("aggregate"));
-        require(producer, "tb:trades.eu", Domains.NO_DOMAIN);
-        require(consumer, "tb:trades.eu", Domains.NO_DOMAIN);
+        final long consumer = input(node("process"));
+        require(producer, "mq:orders.eu", Domains.NO_DOMAIN);
+        require(consumer, "mq:orders.eu", Domains.NO_DOMAIN);
 
         assertEquals(2, linkIds().length);
         assertNotEquals(NO_LINK, linkBetween(producer, into));
@@ -120,10 +137,10 @@ class AddressTest {
     @Test
     void shouldNotLinkTwoSidesThatBothLookForTheAddress() {
         final long left = output(node("ingest"));
-        final long right = input(node("aggregate"));
+        final long right = input(node("process"));
 
-        require(left, "tb:trades.eu", Domains.NO_DOMAIN);
-        require(right, "tb:trades.eu", Domains.NO_DOMAIN);
+        require(left, "mq:orders.eu", Domains.NO_DOMAIN);
+        require(right, "mq:orders.eu", Domains.NO_DOMAIN);
 
         assertEquals(0, linkIds().length);
     }
@@ -132,9 +149,9 @@ class AddressTest {
     void shouldTakeTheLinkAwayWithTheNodeThatDeclaredIt() {
         final long ingest = node("ingest");
         final long producer = output(ingest);
-        final long consumer = input(node("aggregate"));
-        provide(producer, "tb:trades.eu", Domains.NO_DOMAIN);
-        require(consumer, "tb:trades.eu", Domains.NO_DOMAIN);
+        final long consumer = input(node("process"));
+        provide(producer, "mq:orders.eu", Domains.NO_DOMAIN);
+        require(consumer, "mq:orders.eu", Domains.NO_DOMAIN);
 
         structure.run(() -> structure.remove(ingest)).join();
 
@@ -144,14 +161,14 @@ class AddressTest {
     @Test
     void shouldRedrawTheLinkWhenAPortIsGivenAnotherAddress() {
         final long producer = output(node("ingest"));
-        final long consumer = input(node("aggregate"));
-        provide(producer, "tb:trades.eu", Domains.NO_DOMAIN);
-        require(consumer, "tb:trades.eu", Domains.NO_DOMAIN);
+        final long consumer = input(node("process"));
+        provide(producer, "mq:orders.eu", Domains.NO_DOMAIN);
+        require(consumer, "mq:orders.eu", Domains.NO_DOMAIN);
 
-        require(consumer, "tb:aggr.eu", Domains.NO_DOMAIN);
+        require(consumer, "mq:totals.eu", Domains.NO_DOMAIN);
         assertEquals(0, linkIds().length);
 
-        provide(producer, "tb:aggr.eu", Domains.NO_DOMAIN);
+        provide(producer, "mq:totals.eu", Domains.NO_DOMAIN);
         assertNotEquals(NO_LINK, linkBetween(producer, consumer));
     }
 
@@ -160,7 +177,7 @@ class AddressTest {
     }
 
     private long linkNamed(final String address) {
-        final long[] ids = structure.matchedObjectIds("link[name=\"" + address + "\"]").join();
+        final long[] ids = structure.matchedObjectIds("link[$name=\"" + address + "\"]").join();
         return ids.length == 1 ? ids[0] : NO_LINK;
     }
 
@@ -170,23 +187,23 @@ class AddressTest {
      */
     @Test
     void shouldMeetTheOutputOfEachAddressOneInputRequires() {
-        final long store = node("timebase");
-        final long trades = structure.submit(() -> structure.addOutput(store, "trades", "tb")).join().id();
-        final long quotes = structure.submit(() -> structure.addOutput(store, "quotes", "tb")).join().id();
-        provide(trades, "tb:trades", Domains.NO_DOMAIN);
-        provide(quotes, "tb:quotes", Domains.NO_DOMAIN);
+        final long store = node("broker");
+        final long orders = structure.submit(() -> structure.addOutput(store, "orders", "mq")).join().id();
+        final long payments = structure.submit(() -> structure.addOutput(store, "payments", "mq")).join().id();
+        provide(orders, "mq:orders", Domains.NO_DOMAIN);
+        provide(payments, "mq:payments", Domains.NO_DOMAIN);
         final long gateway = input(node("gateway"));
 
-        require(gateway, List.of("tb:trades", "tb:quotes", "tb:bars"), Domains.NO_DOMAIN);
+        require(gateway, List.of("mq:orders", "mq:payments", "mq:refunds"), Domains.NO_DOMAIN);
 
         assertEquals(2, linkIds().length);
-        assertEquals(linkBetween(trades, gateway), linkNamed("tb:trades"));
-        assertEquals(linkBetween(quotes, gateway), linkNamed("tb:quotes"));
-        assertEquals(1, structure.matchedObjectIds("input[address=\"tb:quotes\"][links=2]").join().length);
+        assertEquals(linkBetween(orders, gateway), linkNamed("mq:orders"));
+        assertEquals(linkBetween(payments, gateway), linkNamed("mq:payments"));
+        assertEquals(1, structure.matchedObjectIds("input[$address=\"mq:payments\"][$links=2]").join().length);
 
-        final long bars = structure.submit(() -> structure.addOutput(store, "bars", "tb")).join().id();
-        provide(bars, "tb:bars", Domains.NO_DOMAIN);
-        assertNotEquals(NO_LINK, linkBetween(bars, gateway));
+        final long refunds = structure.submit(() -> structure.addOutput(store, "refunds", "mq")).join().id();
+        provide(refunds, "mq:refunds", Domains.NO_DOMAIN);
+        assertNotEquals(NO_LINK, linkBetween(refunds, gateway));
     }
 
     /**
@@ -197,14 +214,14 @@ class AddressTest {
     void shouldSelectAPortByAnyOfItsAddresses() {
         final long both = input(node("gateway"));
         final long one = input(node("reader"));
-        require(both, List.of("tb:trades", "tb:quotes"), Domains.NO_DOMAIN);
-        require(one, "tb:quotes", Domains.NO_DOMAIN);
+        require(both, List.of("mq:orders", "mq:payments"), Domains.NO_DOMAIN);
+        require(one, "mq:payments", Domains.NO_DOMAIN);
 
-        assertArrayEquals(new long[] {both}, structure.matchedObjectIds("input[address=\"tb:trades\"]").join());
-        assertEquals(2, structure.matchedObjectIds("input[address=\"tb:quotes\"]").join().length);
-        assertArrayEquals(new long[] {one}, structure.matchedObjectIds("input[address!=\"tb:trades\"]").join());
-        assertArrayEquals(new long[] {both}, structure.matchedObjectIds("input[address~\"trades\"]").join());
-        assertEquals(0, structure.matchedObjectIds("input[address=\"tb:quotes tb:trades\"]").join().length);
+        assertArrayEquals(new long[] {both}, structure.matchedObjectIds("input[$address=\"mq:orders\"]").join());
+        assertEquals(2, structure.matchedObjectIds("input[$address=\"mq:payments\"]").join().length);
+        assertArrayEquals(new long[] {one}, structure.matchedObjectIds("input[$address!=\"mq:orders\"]").join());
+        assertArrayEquals(new long[] {both}, structure.matchedObjectIds("input[$address~\"orders\"]").join());
+        assertEquals(0, structure.matchedObjectIds("input[$address=\"mq:payments mq:orders\"]").join().length);
     }
 
     /**
@@ -215,23 +232,23 @@ class AddressTest {
     void shouldRedrawOnlyTheLinksOfTheAddressesThatCameOrWent() {
         final long gateway = input(node("gateway"));
         final long[] outputs = new long[3];
-        final String[] streams = {"tb:a", "tb:b", "tb:c"};
+        final String[] streams = {"mq:a", "mq:b", "mq:c"};
         for (int i = 0; i < streams.length; i++) {
             outputs[i] = output(node("writer-" + i));
             provide(outputs[i], streams[i], Domains.NO_DOMAIN);
         }
-        require(gateway, List.of("tb:a", "tb:b"), Domains.NO_DOMAIN);
-        final long kept = linkNamed("tb:b");
+        require(gateway, List.of("mq:a", "mq:b"), Domains.NO_DOMAIN);
+        final long kept = linkNamed("mq:b");
 
-        require(gateway, List.of("tb:c", "tb:b", "tb:b"), Domains.NO_DOMAIN);
+        require(gateway, List.of("mq:c", "mq:b", "mq:b"), Domains.NO_DOMAIN);
 
-        assertEquals(NO_LINK, linkNamed("tb:a"));
-        assertEquals(kept, linkNamed("tb:b"));
+        assertEquals(NO_LINK, linkNamed("mq:a"));
+        assertEquals(kept, linkNamed("mq:b"));
         assertNotEquals(NO_LINK, linkBetween(outputs[2], gateway));
 
         require(gateway, List.of(), Domains.NO_DOMAIN);
         assertEquals(0, linkIds().length);
-        assertEquals(0, structure.matchedObjectIds("input[role=require]").join().length);
+        assertEquals(0, structure.matchedObjectIds("input[$role=require]").join().length);
     }
 
     /**
@@ -239,12 +256,12 @@ class AddressTest {
      */
     @Test
     void shouldFeedSeveralInputsFromOneOutputThatProvidesTheirAddresses() {
-        final long store = output(node("timebase"));
-        structure.run(() -> structure.provide(store, List.of("tb:a", "tb:b"), Domains.NO_DOMAIN)).join();
+        final long store = output(node("broker"));
+        structure.run(() -> structure.provide(store, List.of("mq:a", "mq:b"), Domains.NO_DOMAIN)).join();
         final long readsA = input(node("reader-a"));
         final long readsB = input(node("reader-b"));
-        require(readsA, "tb:a", Domains.NO_DOMAIN);
-        require(readsB, "tb:b", Domains.NO_DOMAIN);
+        require(readsA, "mq:a", Domains.NO_DOMAIN);
+        require(readsB, "mq:b", Domains.NO_DOMAIN);
 
         assertNotEquals(NO_LINK, linkBetween(store, readsA));
         assertNotEquals(NO_LINK, linkBetween(store, readsB));
@@ -256,10 +273,10 @@ class AddressTest {
         final int green = structure.domains().idOf("green");
         final long a = output(node("a-blue"));
         final long b = output(node("b-blue"));
-        provide(a, "tb:a", blue);
-        provide(b, "tb:b", blue);
+        provide(a, "mq:a", blue);
+        provide(b, "mq:b", blue);
         final long greenIn = input(node("reader-green"));
-        require(greenIn, List.of("tb:a", "tb:b"), green);
+        require(greenIn, List.of("mq:a", "mq:b"), green);
         assertEquals(0, linkIds().length);
 
         structure.run(() -> structure.allowRoute(green, blue)).join();
@@ -272,9 +289,9 @@ class AddressTest {
     @Test
     void shouldRefuseToRemoveOrRewireALinkItDrewItself() {
         final long producer = output(node("ingest"));
-        final long consumer = input(node("aggregate"));
-        provide(producer, "tb:trades.eu", Domains.NO_DOMAIN);
-        require(consumer, "tb:trades.eu", Domains.NO_DOMAIN);
+        final long consumer = input(node("process"));
+        provide(producer, "mq:orders.eu", Domains.NO_DOMAIN);
+        require(consumer, "mq:orders.eu", Domains.NO_DOMAIN);
         final long drawn = linkBetween(producer, consumer);
         final long elsewhere = input(node("cross"));
 
@@ -301,9 +318,9 @@ class AddressTest {
         structure.subscribe(links.id(), recorder).join();
 
         final long producer = output(node("ingest"));
-        final long consumer = input(node("aggregate"));
-        provide(producer, "tb:trades.eu", Domains.NO_DOMAIN);
-        require(consumer, "tb:trades.eu", Domains.NO_DOMAIN);
+        final long consumer = input(node("process"));
+        provide(producer, "mq:orders.eu", Domains.NO_DOMAIN);
+        require(consumer, "mq:orders.eu", Domains.NO_DOMAIN);
         structure.flushAll().join();
         final long drawn = linkBetween(producer, consumer);
 
@@ -321,7 +338,7 @@ class AddressTest {
         final long ingest = node("ingest");
 
         final Throwable cause = causeOf(
-                () -> structure.run(() -> structure.provide(ingest, "tb:trades.eu")).join());
+                () -> structure.run(() -> structure.provide(ingest, "mq:orders.eu")).join());
 
         assertTrue(cause instanceof IllegalArgumentException, String.valueOf(cause));
     }
@@ -333,21 +350,21 @@ class AddressTest {
     @Test
     void shouldSayWhoIsWaitingForAnAddressNobodyProvides() {
         final int blue = structure.domains().idOf("blue");
-        final long consumer = input(node("aggregate"));
-        require(consumer, "tb:trades.eu", blue);
-        final String waiting = "input[role=require] & *[links=0]";
+        final long consumer = input(node("process"));
+        require(consumer, "mq:orders.eu", blue);
+        final String waiting = "input[$role=require] & *[$links=0]";
 
         final Map<String, Object> properties = structure.snapshotObject(consumer).join();
-        assertEquals("tb:trades.eu", properties.get("address"));
-        assertEquals("require", properties.get("role"));
-        assertEquals("blue", properties.get("domain"));
-        assertEquals(0L, properties.get("links"));
+        assertEquals("mq:orders.eu", properties.get("$address"));
+        assertEquals("require", properties.get("$role"));
+        assertEquals("blue", properties.get("$domain"));
+        assertEquals(0L, properties.get("$links"));
         assertEquals(1, structure.matchedObjectIds(waiting).join().length);
-        assertEquals(1, structure.matchedObjectIds("input[address=\"tb:trades.eu\"]").join().length);
+        assertEquals(1, structure.matchedObjectIds("input[$address=\"mq:orders.eu\"]").join().length);
 
         final long producer = output(node("ingest"));
-        provide(producer, "tb:trades.eu", blue);
-        assertEquals(1L, structure.snapshotObject(consumer).join().get("links"));
+        provide(producer, "mq:orders.eu", blue);
+        assertEquals(1L, structure.snapshotObject(consumer).join().get("$links"));
         assertEquals(0, structure.matchedObjectIds(waiting).join().length);
 
         structure.run(() -> structure.clearAddress(producer)).join();
@@ -362,10 +379,10 @@ class AddressTest {
     void shouldKeepTheCopiesOfOneWorldApartUnlessRouted() {
         final int blue = structure.domains().idOf("blue");
         final int green = structure.domains().idOf("green");
-        final long blueOut = output(node("aggregate-blue"));
+        final long blueOut = output(node("process-blue"));
         final long greenIn = input(node("cross-green"));
-        provide(blueOut, "tb:aggr.eu", blue);
-        require(greenIn, "tb:aggr.eu", green);
+        provide(blueOut, "mq:totals.eu", blue);
+        require(greenIn, "mq:totals.eu", green);
         assertEquals(0, linkIds().length);
 
         structure.run(() -> structure.allowRoute(green, blue)).join();
@@ -382,10 +399,10 @@ class AddressTest {
     @Test
     void shouldNotRouteToWhatBelongsToNoCopy() {
         final int green = structure.domains().idOf("green");
-        final long trades = output(node("trades"));
-        final long greenIn = input(node("aggregate-green"));
-        provide(trades, "tb:trades.eu", Domains.NO_DOMAIN);
-        require(greenIn, "tb:trades.eu", green);
+        final long orders = output(node("orders"));
+        final long greenIn = input(node("process-green"));
+        provide(orders, "mq:orders.eu", Domains.NO_DOMAIN);
+        require(greenIn, "mq:orders.eu", green);
 
         structure.run(() -> structure.allowRoute(green, Domains.NO_DOMAIN)).join();
         assertEquals(1, linkIds().length);
@@ -395,7 +412,7 @@ class AddressTest {
     }
 
     /**
-     * The acceptance of the phase: one input TimeBase belongs to no colour, so both releases
+     * The acceptance of the phase: one input broker belongs to no colour, so both releases
      * read from it, while each writes to the copy of the output that carries its own.
      */
     @Test
@@ -403,28 +420,28 @@ class AddressTest {
         final int blue = structure.domains().idOf("blue");
         final int green = structure.domains().idOf("green");
 
-        final long trades = output(node("trades"));
-        provide(trades, "tb:trades.eu", Domains.NO_DOMAIN);
+        final long orders = output(node("orders"));
+        provide(orders, "mq:orders.eu", Domains.NO_DOMAIN);
 
         final long aggrBlue = input(node("aggr-blue"));
         final long aggrGreen = input(node("aggr-green"));
-        provide(aggrBlue, "tb:aggr.eu", blue);
-        provide(aggrGreen, "tb:aggr.eu", green);
+        provide(aggrBlue, "mq:totals.eu", blue);
+        provide(aggrGreen, "mq:totals.eu", green);
 
-        final long blueNode = node("aggregate-blue");
-        final long greenNode = node("aggregate-green");
+        final long blueNode = node("process-blue");
+        final long greenNode = node("process-green");
         final long blueIn = input(blueNode);
         final long blueOut = output(blueNode);
         final long greenIn = input(greenNode);
         final long greenOut = output(greenNode);
-        require(blueIn, "tb:trades.eu", blue);
-        require(greenIn, "tb:trades.eu", green);
-        require(blueOut, "tb:aggr.eu", blue);
-        require(greenOut, "tb:aggr.eu", green);
+        require(blueIn, "mq:orders.eu", blue);
+        require(greenIn, "mq:orders.eu", green);
+        require(blueOut, "mq:totals.eu", blue);
+        require(greenOut, "mq:totals.eu", green);
 
         assertEquals(4, linkIds().length);
-        assertNotEquals(NO_LINK, linkBetween(trades, blueIn));
-        assertNotEquals(NO_LINK, linkBetween(trades, greenIn));
+        assertNotEquals(NO_LINK, linkBetween(orders, blueIn));
+        assertNotEquals(NO_LINK, linkBetween(orders, greenIn));
         assertNotEquals(NO_LINK, linkBetween(blueOut, aggrBlue));
         assertNotEquals(NO_LINK, linkBetween(greenOut, aggrGreen));
         assertEquals(NO_LINK, linkBetween(blueOut, aggrGreen));

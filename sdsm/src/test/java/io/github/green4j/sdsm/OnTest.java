@@ -73,8 +73,8 @@ class OnTest {
 
     @Test
     void shouldFollowTheNodesAsTheyMoveBetweenParents() {
-        final Node blue = structure.submit(() -> structure.createNode("blue", "silo")).join();
-        final Node green = structure.submit(() -> structure.createNode("green", "silo")).join();
+        final Node blue = structure.submit(() -> structure.createNode("blue", "cell")).join();
+        final Node green = structure.submit(() -> structure.createNode("green", "cell")).join();
         structure.run(() -> structure.contain(blue.id(), alpha.id(), "placement")).join();
         final Recorder recorder = subscribedTo("on(node & under(placement, /blue))");
         assertEquals(List.of(alphaOut.id()), recorder.idsInSnapshot(ChangeKind.ADDED));

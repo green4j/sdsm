@@ -83,7 +83,7 @@ public abstract class Port extends StructureObject {
 
     /**
      * @return how many links end here, so a selector finds a requirer nobody answers:
-     *         {@code input[role=require] & *[links=0]}
+     *         {@code input[$role=require] & *[$links=0]}
      */
     public int links() {
         return links;

@@ -1,6 +1,7 @@
 package io.github.green4j.sdsm.example.demo;
 
 import io.github.green4j.sdsm.DeliveryPolicy;
+import io.github.green4j.sdsm.example.basic.Show;
 import io.github.green4j.sdsm.LoopGroup;
 import io.github.green4j.sdsm.Structure;
 import io.github.green4j.sdsm.StructureRuntime;
@@ -51,13 +52,7 @@ public final class Demo implements AutoCloseable {
     public void tick() {
         world.tick();
         watch.sees(world.services());
-        final long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
-        while (!watch.settled()) {
-            if (System.nanoTime() > deadline) {
-                throw new IllegalStateException("The structure did not settle");
-            }
-            Thread.yield();
-        }
+        Show.await(watch::settled);
         structure.flushAll().join();
     }
 

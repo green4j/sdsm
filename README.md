@@ -26,7 +26,7 @@ try (StructureRuntime runtime = StructureRuntime.create(2, 1, "demo")) {
     }).join();
 
     View services = s.createView("services",
-            "node[type=service], between(node[type=service])",
+            "node[$type=service], between(node[$type=service])",
             null,
             DeliveryPolicy.minInterval(Duration.ofMillis(50))).join();
 
@@ -68,15 +68,35 @@ The laws the structure keeps by itself:
 7. **Clients look through sets.** A view is a selector, keys and a delivery policy; its membership follows properties, addresses and placement as they change. A view watches the world and is not part of it.
 8. **Only what is looked at is paid for.** Interest is a detail level per object, the highest any subscriber asks for; a property a source supplies from level L is written and asked for only while someone wants L.
 
-What is left out on purpose: groups as a kind of their own (a container is a node with children, a set is a selector); relations other than containment and links (a stage, a family, a channel is a property); and either end of a link naming the other (the address does, so sources arrive in any order).
+What is left out on purpose: groups as a kind of their own (a container is a node with children, a set is a selector); relations other than containment and links (a tier, a topic, a shard is a property); and either end of a link naming the other (the address does, so sources arrive in any order).
 
-A set cut by a key is a node per key the structure keeps - `groupBy(name, type, selector, by...)`, its folds declared with `deriveEach(grouping, key, fold, Over.members(path))`: the flow links between the same two nodes carrying the same family are one bundle with the sum of their rates. A path is a key of the member, or one hop and a key: `from.`, `to.` and `node.` through an intrinsic id, `parent(axis)` to the node holding the member on an axis (`parent(placement)` alone is its id), so `groupBy("bands", "band", "node[layer=logical]", "parent(placement)", "stage")` is a band per stage within each silo. A group's external id is `<name>:<key>`, the key's parts joined by `,` and a text that could be taken for a number or a flag quoted - `bands:5` is not `bands:"5"` - and while the grouping lives no other object takes an id under its name.
+A set cut by a key is a node per key the structure keeps - `groupBy(name, type, selector, by...)`, its folds declared with `deriveEach(grouping, key, fold, Over.members(path))`: the links between the same two nodes carrying the same topic are one bundle with the sum of their rates. A path is a key of the member, or one hop and a key: `$from.`, `$to.` and `$node.` through an intrinsic id, `parent(axis)` to the node holding the member on an axis (`parent(placement)` alone is its id), so `groupBy("tiers", "tier", "node[$type=service]", "parent(placement)", "tier")` is a box per tier within each zone. A group's external id is `<name>:<key>`, the key's parts joined by `,` and a text that could be taken for a number or a flag quoted - `tiers:5` is not `tiers:"5"` - and while the grouping lives no other object takes an id under its name.
+
+## Intrinsic keys
+
+What an object is, the structure keeps itself, under keys that start with `$`; everything else on an object is the caller's, and no name of the caller's starts with `$`, so `role` or `type` is free for whatever the model means by it. The running example: a pod `ingest` writes the queue `orders`, a pod `billing` reads it, both in zone `eu-1` of the `placement` axis.
+
+| Key | On | Given by | Changes | What the structure does with it |
+|---|---|---|---|---|
+| `$id` | every object | the structure | never | the handle every call takes, and what every change record names |
+| `$name` | every object | the caller, on creation | never | a segment of a path - `/eu-1/ingest`; a port's name on its side of its node - `ingest>orders`; a link drawn from declarations is named by its address |
+| `$type` | every object | the caller, on creation | never | a drawn link takes its provider's - `link[$type=queue]`; a path segment `type:name` tells namesakes apart; `Over.children(key, type)` folds over one type of child |
+| `$externalId` | node, port | the caller, on creation | never | the thing's own id in its world: observing it again reaches the same node, no second object takes it; a port's is its node's, its side and its name - `uid-1>orders`; a group's is `<grouping>:<key>` |
+| `$axis` | a node holding others | `contain(parent, child, axis)` | fixed once it holds something | which forest it is a container in - what `under(axis, path)`, `pathOf` and `parent(axis)` walk |
+| `$node` | port | the structure | never | the node it is on; a hop - `$node.zone` |
+| `$address` | port | `provide(...)` / `require(...)` | restated whole | compared for equality: `ingest>orders` provides `queue:orders`, `billing<orders` requires it, and the link is drawn |
+| `$role` | port | the same declaration | with it | `provide` or `require`: a link runs between one of each |
+| `$domain` | port | the same declaration | with it | which copy of the world it belongs to: a requirer meets a provider in its own, one in none, or across a route |
+| `$links` | port | the structure | as links come and go | how many end here - `input[$role=require][$links=0]` is a need nothing meets |
+| `$from`, `$to` | link | the structure | `retargetLinkFrom` / `retargetLinkTo`, on a link made by hand | the ports it joins; hops - `$from.rate` |
+
+They are answered from the object's own fields, not from its property store, and hold the first key ids. A selector and a change record treat them like any other key, and a view that filters keys still delivers them, because what an object is is not what it reports. None is set, removed or derived through the typed setters; those that never change are read from any thread. `PropertyKeys.idOf` refuses a name that starts with `$` but these and a path through one - `$from.$node` - which is how a grouping names the parts of its key. What kind an object is - node, input, output, link - is no key: a change record carries it, and a selector starts with it.
 
 ## Object Identity
 
-- **`id`** - a `long` the structure assigns at creation, unique within it, stable for the life of the object and opaque: the handle every other call takes.
+- **`$id`** - a `long` the structure assigns at creation, unique within it, stable for the life of the object and opaque: the handle every other call takes.
 
-- **`externalId`** - the id the *modelled thing* carries in the world that owns it: a pod's UID, a queue's name. It identifies the original, not the object standing for it, so an object holds it for life and no second object may take it. It is optional: a node the structure drew for an axis of its own models nothing outside and has none. Given when a node is made (`createNode(name, type, externalId)`), resolved back through `findByExternalId(externalId)` on the structure's thread, so observing the same thing again reaches the object already standing for it instead of making a second one. It can be selected on. A port has none of its own to give: a port of a node with an external id is known by the node's, its side and its name - `pod-uid-1<in`, `pod-uid-1>trades` (`Port.appendExternalId`) - so a name is one to a side of such a node, and a source measuring the port spells the same id.
+- **`$externalId`** - the id the *modelled thing* carries in the world that owns it: a pod's UID, a queue's name. It identifies the original, not the object standing for it, so an object holds it for life and no second object may take it. It is optional: a node the structure drew for an axis of its own models nothing outside and has none. Given when a node is made (`createNode(name, type, externalId)`), resolved back through `findByExternalId(externalId)` on the structure's thread, so observing the same thing again reaches the object already standing for it instead of making a second one. It can be selected on. A port has none of its own to give: a port of a node with an external id is known by the node's, its side and its name - `pod-uid-1<in`, `pod-uid-1>orders` (`Port.appendExternalId`) - so a name is one to a side of such a node, and a source measuring the port spells the same id.
 
   Uniqueness is demanded across the whole structure while an id is only unique in its own world, so a structure mirroring two worlds needs the world folded into the id (`k8s:pod:<uid>`) by whoever writes it. The structure stores and compares the id and never reads anything out of it.
 
@@ -88,9 +108,9 @@ An object has no single position to name, since it is placed along several axes 
 
 A connection is often not observable. A pod's configuration says which queue it reads and which it writes; the two ends of that queue are seen apart, out of order, and sometimes far apart in time. So neither end names the other. A port declares an address instead - `provide(portId, address)` when the thing it stands for is reachable there, `require(portId, address)` when it is looking for it - and the structure draws the link as soon as both declarations exist, in whichever order they arrive. The link goes when either declaration does, is `isDerived()`, and cannot be removed or rewired on its own: it belongs to the declarations, not to the caller.
 
-An address is one opaque text. Matching is equality, so the structure never needs its parts: scheme, host, path and whatever else are the caller's business, spelled into the text handed over. It is an intrinsic property of the port, so a selector finds who is waiting for what: `input[address="tb:trades.eu"]`.
+An address is one opaque text. Matching is equality, so the structure never needs its parts: scheme, host, path and whatever else are the caller's business, spelled into the text handed over. It is an intrinsic property of the port, so a selector finds who is waiting for what: `input[$address="queue:orders.eu"]`.
 
-A port may declare several addresses at once - `require(portId, addresses, domainId)`, `provide(...)` alike - each matched on its own, so one input that reads whichever stream of a store it is asked for meets the output of each, and one output that answers for many feeds each of their readers. A link is named by the address it came from. A set is restated whole, in any order: only the links of addresses that came or went are drawn or taken, and an empty one withdraws. The port's `address` shows them sorted, separated by a space; `addressCount()` / `addressAt(i)` give each. A selector compares each on its own: `input[address="tb:trades"]` finds the input that declares it among others, `address!=` one that does not declare it.
+A port may declare several addresses at once - `require(portId, addresses, domainId)`, `provide(...)` alike - each matched on its own, so one input that reads whichever stream of a store it is asked for meets the output of each, and one output that answers for many feeds each of their readers. A link is named by the address it came from. A set is restated whole, in any order: only the links of addresses that came or went are drawn or taken, and an empty one withdraws. The port's `$address` shows them sorted, separated by a space; `addressCount()` / `addressAt(i)` give each. A selector compares each on its own: `input[$address="queue:orders"]` finds the input that declares it among others, `$address!=` one that does not declare it.
 
 A link runs from an output to an input, and that is the whole direction rule: a providing input takes links from requiring outputs, a providing output feeds requiring inputs. A queue is therefore a node of its own, both of whose ports provide the same address - which is what lets `in-rate != out-rate` stand for a backlog, something a single link could not carry.
 
@@ -171,11 +191,11 @@ The future completes once the task has run. By then a view delivering `onChange(
 
 ### 8. Selector language as a small DSL
 
-A selector is a kind, `[key op value]` predicates (`=`, `!=`, `~` for a substring, `<` `<=` `>` `>=` between numbers), `under(axis, path)`, `between(e)` and `touching(e)` for links by their ends' nodes, `on(e)` for ports by their node, `,` for a union, `&` for an intersection, `!` for what a term does not hold, `[key]` for a value being there and parentheses: `node[type=service], between(node[type=service])`. It is kept up to date as properties, placement, ends and the nodes of ports change, and stops short of a query engine on purpose. The grammar is in [`sdsm/README.md`](sdsm/README.md).
+A selector is a kind, `[key op value]` predicates (`=`, `!=`, `~` for a substring, `<` `<=` `>` `>=` between numbers), `under(axis, path)`, `between(e)` and `touching(e)` for links by their ends' nodes, `on(e)` for ports by their node, `,` for a union, `&` for an intersection, `!` for what a term does not hold, `[key]` for a value being there and parentheses: `node[$type=service], between(node[$type=service])`. It is kept up to date as properties, placement, ends and the nodes of ports change, and stops short of a query engine on purpose. The grammar is in [`sdsm/README.md`](sdsm/README.md).
 
 ### 9. Reserved properties and stable identity
 
-`id`, `kind`, `name`, `type`, `externalId`, `axis`, `address`, `node`, `from`, `to`, `role`, `domain` and `links` hold the first key ids and are answered from the object's own fields rather than from its property store - one namespace, so a selector and a change record treat them like any other key. They cannot be set or removed through the typed setters, nor derived or folded on an object or over its children. `id`, `kind`, `name`, `type` and `externalId` never change, so they can be read from any thread, and `axis` is fixed once a node holds something; `address` is mutable through `provide(...)` / `require(...)` / `clearAddress(...)`, which also redraw the links it implies. `node` is what a port sits on, `role` (`provide` / `require`) and `domain` come with its address, `links` counts its links; `from` and `to` are what a link joins; a view that filters property keys still delivers all of these, because what an object is is not what it reports.
+What the structure keeps - identity, placement, declarations, the ends of links - is read like a property and named apart from them: one namespace for a selector and a change record, a `$` that no caller's name takes. A receiver reads the shape of the graph out of the same records as everything else, and a word the model needs is never the structure's. The keys are in [Intrinsic keys](#intrinsic-keys).
 
 ### 10. Nothing is persisted
 

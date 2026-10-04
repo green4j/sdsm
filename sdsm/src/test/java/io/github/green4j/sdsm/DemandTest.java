@@ -158,18 +158,18 @@ class DemandTest {
         source.poll(1);
         awaitState(feed, FeedState.CONVERGED);
         assertEquals(3, source.observations);
-        assertEquals(3, count("node[type=pod]"));
+        assertEquals(3, count("node[$type=pod]"));
 
         collapse(source, DetailLevel.OFF);
         source.poll(2);
         Await.until(() -> source.observations == 5);
-        assertEquals(3, count("node[type=pod]"));
+        assertEquals(3, count("node[$type=pod]"));
         assertFalse(hasCpu("pod-2"));
 
         collapse(source, DetailLevel.COARSE);
         source.poll(3);
         Await.until(() -> source.observations == 8);
-        assertEquals(3, count("node[type=pod]"));
+        assertEquals(3, count("node[$type=pod]"));
     }
 
     /**
@@ -190,7 +190,7 @@ class DemandTest {
         feed.removed("pod-1");
         Await.until(() -> objectWithExternalId("pod-1") == null);
 
-        assertEquals(1, count("node[type=pod]"));
+        assertEquals(1, count("node[$type=pod]"));
     }
 
     /**
@@ -252,7 +252,7 @@ class DemandTest {
         awaitState(feed, FeedState.STALE);
 
         assertEquals(1, source.observations);
-        assertEquals(1, count("node[type=pod]"), "not looked at is not gone");
+        assertEquals(1, count("node[$type=pod]"), "not looked at is not gone");
     }
 
     /**
@@ -323,7 +323,7 @@ class DemandTest {
      */
     @Test
     void shouldReachEverythingWhileAGroupGoes() {
-        structure.run(() -> structure.groupBy("byCpu", "load", "node[type=pod]", "cpu")).join();
+        structure.run(() -> structure.groupBy("byCpu", "load", "node[$type=pod]", "cpu")).join();
         final Pods source = new Pods("pod-1", "pod-2", "pod-3");
         final Feed<Pod> feed = loop.attach(1, source, new Placement());
         source.poll(1);
@@ -332,7 +332,7 @@ class DemandTest {
 
         structure.setInterest("window", Interest.of(DetailLevel.COARSE)).join();
 
-        assertEquals(0, count("node[type=load]"));
+        assertEquals(0, count("node[$type=load]"));
         assertEquals(DetailLevel.COARSE, levelOf(rack));
     }
 

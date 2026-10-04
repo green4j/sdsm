@@ -2180,7 +2180,7 @@ public final class Structure {
      * Cuts a set by a key: a node of the given type for every value the key takes among the
      * objects the selector holds, made when its first member comes and removed when its last
      * goes, with the key's parts as its properties, which only it writes. A part is a path - a
-     * property of the member, or {@code from.}, {@code to.} or {@code node.} and a property of the
+     * property of the member, or {@code $from.}, {@code $to.} or {@code $node.} and a property of the
      * object that intrinsic names, or {@code parent(<axis>)} - the node holding the member on the
      * axis - and perhaps one of its properties; a member missing a part is in no group. What a group folds of its
      * members is declared with {@link #deriveEach(long, int, Fold, Over)}.
@@ -2190,8 +2190,8 @@ public final class Structure {
      *                     and a text that could be taken for a number or a flag quoted; while it
      *                     lives no other object takes an id under its name
      * @param type         the type of the nodes it makes
-     * @param selectorText what it holds, e.g. {@code link[type=flow]}
-     * @param by           the key's parts, e.g. {@code from.node}, {@code to.node}, {@code from.family}
+     * @param selectorText what it holds, e.g. {@code link[$type=flow]}
+     * @param by           the key's parts, e.g. {@code $from.$node}, {@code $to.$node}, {@code $from.topic}
      * @return the grouping
      */
     public Grouping groupBy(final String name,
@@ -2505,7 +2505,7 @@ public final class Structure {
     }
 
     /**
-     * Puts a node under another on an axis: a silo holds its components, a component what it
+     * Puts a node under another on an axis: a zone holds its services, a service what it
      * runs on. A node holds children on one axis, the one its first child is put on; a child
      * has at most one parent per axis, and no node is under itself, on any mix of axes.
      * Putting it where it is already is nothing.

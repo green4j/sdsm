@@ -10,6 +10,7 @@ import io.github.green4j.sdsm.ObjectKind;
 import io.github.green4j.sdsm.PropertyKeys;
 import io.github.green4j.sdsm.StructureBatch;
 
+import java.math.BigDecimal;
 import java.util.Arrays;
 
 /**
@@ -18,14 +19,14 @@ import java.util.Arrays;
  * and nothing else.
  * <pre>
  * {"view":"topology","seq":5,"version":3732,"snapshot":true,
- *  "changes":[["+",7,"NODE"],["p",7,1,"aggregator-0",2,"aggregator"],["c",7,3],...],
- *  "keys":{"1":"name","2":"type"}}
+ *  "changes":[["+",7,"NODE"],["p",7,1,"billing-0",2,"billing"],["c",7,3],...],
+ *  "keys":{"1":"$name","2":"$type"}}
  * </pre>
  * A change is {@code ["+", id, kind]} added, {@code ["-", id, kind]} removed, {@code ["c", id,
  * parent]} contained, {@code ["u", id, parent]} uncontained, or {@code ["p", id, key, value,
  * key, value...]}: what properties of one object now are, the batch's run of them. A key is a
  * number, and {@code keys} names each one the frame uses, so every frame reads on its own.
- * {@code id} and {@code kind} are the change's own and not repeated as properties, and a
+ * {@code $id} is the change's own and not repeated as a property, and a
  * port's {@code externalId} is its node's, its side and its name ({@code Port.appendExternalId}),
  * so it is not sent either.
  * <p>
@@ -100,8 +101,7 @@ public final class BatchJson {
         final ChangeKind kind = cursor.changeKind();
         if (kind == ChangeKind.PROPERTY_CHANGED) {
             final int key = cursor.propertyKeyId();
-            if (key == PropertyKeys.ID || key == PropertyKeys.KIND
-                    || key == PropertyKeys.EXTERNAL_ID && isPort(cursor)) {
+            if (key == PropertyKeys.ID || key == PropertyKeys.EXTERNAL_ID && isPort(cursor)) {
                 return run;
             }
             if (run != cursor.objectId()) {
@@ -189,8 +189,9 @@ public final class BatchJson {
     }
 
     /**
-     * A value goes out as what it is. A property nobody supplies is not a value: it is
-     * absent, and the frame says so rather than sending a zero.
+     * A value goes out as what it is: a fraction as the shortest decimal that is it, and only
+     * what JSON has no number for - NaN, an infinity - as text. A property nobody supplies is
+     * not a value: it is absent, and the frame says so rather than sending a zero.
      *
      * @param out    where to write
      * @param cursor what to write
@@ -201,7 +202,13 @@ public final class BatchJson {
                 out.numberValue(cursor.longValue());
                 break;
             case DOUBLE:
-                out.stringValue(Double.toString(cursor.doubleValue()));
+                final double fraction = cursor.doubleValue();
+                if (Double.isFinite(fraction)) {
+                    final BigDecimal decimal = BigDecimal.valueOf(fraction);   // 17 digits at most: a long
+                    out.numberValue(decimal.unscaledValue().longValueExact(), -decimal.scale());
+                } else {
+                    out.stringValue(Double.toString(fraction));
+                }
                 break;
             case BOOLEAN:
                 if (cursor.booleanValue()) {

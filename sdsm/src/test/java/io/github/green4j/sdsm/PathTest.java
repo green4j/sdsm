@@ -41,9 +41,9 @@ class PathTest {
 
     @Test
     void shouldEscapeWhatWouldBreakASegment() {
-        final Path path = Path.root().child("port", "dxtick://tb:8011/CHANNEL_1").child(null, "#1");
+        final Path path = Path.root().child("port", "amqp://mq:5672/orders").child(null, "#1");
 
-        assertEquals("/port:dxtick\\:\\/\\/tb\\:8011\\/CHANNEL_1/\\#1", path.toString());
+        assertEquals("/port:amqp\\:\\/\\/mq\\:5672\\/orders/\\#1", path.toString());
         assertEquals(path, Path.parse(path.toString()));
         assertEquals("#1", Path.parse(path.toString()).nameAt(1));
     }
@@ -61,7 +61,7 @@ class PathTest {
         final Placed placed = placed();
 
         assertEquals(placed.pod, resolve("placement", "/eu-de/blue/ingest-0"));
-        assertEquals(placed.pod, resolve("placement", "/region:eu-de/silo:blue/pod:ingest-0"));
+        assertEquals(placed.pod, resolve("placement", "/region:eu-de/cell:blue/pod:ingest-0"));
         assertEquals(placed.pod, resolve("placement", "/eu-de/#" + placed.blue + "/ingest-0"));
         assertEquals(placed.blue, resolve("placement", "/eu-de/blue"));
         assertEquals(-1L, resolve("placement", "/eu-de/green/ingest-0"));
@@ -89,11 +89,11 @@ class PathTest {
         final long stage = structure.submit(() -> structure.createNode("ingest", "stage")).join().id();
         structure.run(() -> structure.contain(stage, placed.pod, "stage")).join();
 
-        assertEquals(Path.parse("/region:eu-de/silo:blue/pod:ingest-0"),
+        assertEquals(Path.parse("/region:eu-de/cell:blue/pod:ingest-0"),
                 structure.pathOf(placed.pod, "placement").join());
         assertEquals(Path.parse("/stage:ingest/pod:ingest-0"),
                 structure.pathOf(placed.pod, "stage").join());
-        assertEquals(Path.parse("/region:eu-de/silo:blue"),
+        assertEquals(Path.parse("/region:eu-de/cell:blue"),
                 structure.pathOf(placed.blue, "placement").join());
         assertNull(structure.pathOf(placed.pod, "deployment").join());
         final Path canonical = structure.pathOf(placed.pod, "placement").join();
@@ -112,8 +112,8 @@ class PathTest {
 
     private Placed placed() {
         final long region = structure.submit(() -> structure.createNode("eu-de", "region")).join().id();
-        final long blue = structure.submit(() -> structure.createNode("blue", "silo")).join().id();
-        final long green = structure.submit(() -> structure.createNode("green", "silo")).join().id();
+        final long blue = structure.submit(() -> structure.createNode("blue", "cell")).join().id();
+        final long green = structure.submit(() -> structure.createNode("green", "cell")).join().id();
         structure.run(() -> structure.contain(region, blue, "placement")).join();
         structure.run(() -> structure.contain(region, green, "placement")).join();
         final long pod = structure.submit(() -> structure.createNode("ingest-0", "pod")).join().id();

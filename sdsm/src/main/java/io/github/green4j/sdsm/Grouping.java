@@ -6,13 +6,13 @@ import java.util.List;
 
 /**
  * A set cut by a key: the objects a selector holds, a node for every value of the key among
- * them - the flow links between the same two components carrying the same family, say - made
+ * them - the links between the same two services carrying the same topic, say - made
  * by the structure when the first member comes and removed when the last one goes. What a
  * group folds of its members is declared once, for every group there is and will be, with
  * {@link Structure#deriveEach(long, int, Fold, Over)}.
  * <p>
  * A key part, like a member's value, is a path: a property of the member, of the object one
- * of its intrinsic ids names - {@code from.node}, the node of the port a link runs from - or
+ * of its intrinsic ids names - {@code $from.$node}, the node of the port a link runs from - or
  * of its parent on an axis, {@code parent(placement).region}; {@code parent(placement)} alone
  * is the parent's id.
  * A grouping watches the structure, as a view does, and is not part of it; the groups it

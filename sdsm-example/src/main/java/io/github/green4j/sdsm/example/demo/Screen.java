@@ -66,8 +66,8 @@ public final class Screen {
         }
         frame.append('\n');
         final List<ClientObject> members = new ArrayList<>();
-        for (int i = 0; i < tier.memberCount(); i++) {
-            final ClientObject member = view.byId(tier.memberAt(i));
+        for (final long id : tier.members()) {
+            final ClientObject member = view.byId(id);
             if (member != null && member.kind() == ObjectKind.NODE) {
                 members.add(member);
             }
@@ -96,7 +96,7 @@ public final class Screen {
         for (final ClientObject call : calls) {
             frame.append(separator);
             separator = ", ";
-            final boolean answered = call.has("links") && call.longOf("links") > 0;
+            final boolean answered = call.has("$links") && call.longOf("$links") > 0;
             frame.append(answered ? call.name() : paint(DIM, call.name() + " (nobody)"));
         }
         frame.append('\n');

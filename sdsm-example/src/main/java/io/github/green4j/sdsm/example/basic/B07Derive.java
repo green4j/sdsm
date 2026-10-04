@@ -11,10 +11,10 @@ import java.util.concurrent.CompletionException;
 import java.util.function.Consumer;
 
 /**
- * A group can say what its members come to: the backlog of a cluster is the sum of its
- * streams', the backlog of a region the sum of its clusters'. The structure keeps the sum as
- * members change, come and go, and says how many of the members it is made of - a sum over
- * members that have said nothing yet is not the whole of it.
+ * A parent can say what its children come to: the backlog of a cluster is the sum of its
+ * streams', and a region's the sum of the streams under its clusters. The structure keeps the
+ * sum as children change, come and go, and says how many summands it is made of - a sum over
+ * some that have said nothing yet is not the whole of it.
  */
 public final class B07Derive {
 
@@ -32,9 +32,9 @@ public final class B07Derive {
             final Node de1 = structure.submit(() -> structure.createNode("eu-de-1", "cluster")).join();
             final Node de2 = structure.submit(() -> structure.createNode("eu-de-2", "cluster")).join();
             final Node orders = stream(structure, de1, "orders");
-            final Node trades = stream(structure, de1, "trades");
-            final Node quotes = stream(structure, de2, "quotes");
-            // A subgroup deriving the same key is a summand too, so the region sums clusters.
+            final Node shipments = stream(structure, de1, "shipments");
+            final Node payments = stream(structure, de2, "payments");
+            // A child deriving the same key hands its own summands up: the region counts streams.
             structure.run(() -> {
                 structure.contain(region.id(), de1.id(), "placement");
                 structure.contain(region.id(), de2.id(), "placement");
@@ -49,20 +49,20 @@ public final class B07Derive {
             structure.run(() -> {
                 structure.setLong(orders.id(), backlog, 100L);
                 structure.setLong(orders.id(), lag, 3L);
-                structure.setLong(quotes.id(), backlog, 40L);
-                structure.setLong(quotes.id(), lag, 9L);
+                structure.setLong(payments.id(), backlog, 40L);
+                structure.setLong(payments.id(), lag, 9L);
             }).join();
             print(structure, out, region, de1, de2);
 
             out.accept("-- and the third");
             structure.run(() -> {
-                structure.setLong(trades.id(), backlog, 5L);
-                structure.setLong(trades.id(), lag, 1L);
+                structure.setLong(shipments.id(), backlog, 5L);
+                structure.setLong(shipments.id(), lag, 1L);
             }).join();
             print(structure, out, region, de1, de2);
 
-            out.accept("-- quotes is removed");
-            structure.run(() -> structure.remove(quotes.id())).join();
+            out.accept("-- payments is removed");
+            structure.run(() -> structure.remove(payments.id())).join();
             print(structure, out, region, de1, de2);
 
             // What the structure works out is not written by anyone else.
@@ -86,7 +86,7 @@ public final class B07Derive {
                               final Node... groups) {
         for (final Node group : groups) {
             final Map<String, Object> held = structure.snapshotObject(group.id()).join();
-            out.accept("  " + held.get("name")
+            out.accept("  " + held.get("$name")
                     + " backlog=" + held.getOrDefault("backlog", "-")
                     + " (" + held.get("backlog.known") + " of " + held.get("backlog.total") + ")"
                     + " lag=" + held.getOrDefault("lag", "-"));

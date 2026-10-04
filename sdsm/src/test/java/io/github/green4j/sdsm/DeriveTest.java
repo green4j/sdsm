@@ -32,7 +32,7 @@ class DeriveTest {
     private Node raw;
     private Node enriched;
     private Node cross;
-    private Node aggregator;
+    private Node billing;
 
     @BeforeEach
     void layOut() {
@@ -44,8 +44,8 @@ class DeriveTest {
         raw = stream(blue, "raw");
         enriched = stream(blue, "enriched");
         cross = stream(green, "cross");
-        aggregator = structure.submit(() -> structure.createNode("aggregator", "aggregate")).join();
-        structure.run(() -> structure.contain(blue.id(), aggregator.id(), "placement")).join();
+        billing = structure.submit(() -> structure.createNode("billing", "process")).join();
+        structure.run(() -> structure.contain(blue.id(), billing.id(), "placement")).join();
     }
 
     @AfterEach
@@ -57,7 +57,7 @@ class DeriveTest {
     void shouldSumTheMembersOfTheGivenTypeOnly() {
         set(raw, backlog, 100L);
         set(enriched, backlog, 20L);
-        set(aggregator, backlog, 5000L);
+        set(billing, backlog, 5000L);
         derive(blue, backlog);
 
         assertEquals(120L, value(blue, "backlog"));
@@ -213,7 +213,7 @@ class DeriveTest {
     @Test
     void shouldTakeEveryMemberWhenNoTypeIsGiven() {
         set(raw, backlog, 100L);
-        set(aggregator, backlog, 5000L);
+        set(billing, backlog, 5000L);
         set(green, backlog, 7L);
         structure.run(() -> structure.derive(cluster.id(), backlog, Fold.MAX, Over.children(backlog, null))).join();
         structure.run(() -> structure.derive(blue.id(), backlog, Fold.MAX, Over.children(backlog, null))).join();

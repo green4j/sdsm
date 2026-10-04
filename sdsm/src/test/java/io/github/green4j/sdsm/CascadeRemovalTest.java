@@ -28,7 +28,7 @@ class CascadeRemovalTest {
     }
 
     private boolean exists(final long objectId) {
-        return structure.matchedObjectIds("*[id=" + objectId + "]").join().length == 1;
+        return structure.matchedObjectIds("*[$id=" + objectId + "]").join().length == 1;
     }
 
     @ParameterizedTest(name = "the writer: {0}")

@@ -12,31 +12,34 @@ import java.util.Map;
  * <p>
  * Ids are dense, assigned on first use and never reused, which makes a key id a stable handle
  * for the life of the process. The intrinsic keys - the ones every object answers from its
- * own fields rather than from its property store - hold the first ids. A relation an object
- * has exactly one of is among them: a port answers which node it is on, a link which ports it
- * joins, so a receiver reads the shape of the graph out of the same records as everything
- * else.
+ * own fields rather than from its property store - hold the first ids. Their names, and paths
+ * through them, alone start with {@link #INTRINSIC}: what the structure keeps never takes a name
+ * from what it is told. A relation an object has exactly one of is among them: a port answers
+ * which node it is on, a link which ports it joins, so a receiver reads the shape of the graph out
+ * of the same records as everything else.
  */
 public final class PropertyKeys {
+
+    /** What an intrinsic key's name starts with, and no other key's may. */
+    public static final char INTRINSIC = '$';
 
     public static final int ID = 0;
     public static final int NAME = 1;
     public static final int TYPE = 2;
-    public static final int KIND = 3;
-    public static final int EXTERNAL_ID = 4;
-    public static final int AXIS = 5;
-    public static final int ADDRESS = 6;
-    public static final int NODE = 7;
-    public static final int FROM = 8;
-    public static final int TO = 9;
-    public static final int ROLE = 10;
-    public static final int DOMAIN = 11;
-    public static final int LINKS = 12;
+    public static final int EXTERNAL_ID = 3;
+    public static final int AXIS = 4;
+    public static final int ADDRESS = 5;
+    public static final int NODE = 6;
+    public static final int FROM = 7;
+    public static final int TO = 8;
+    public static final int ROLE = 9;
+    public static final int DOMAIN = 10;
+    public static final int LINKS = 11;
 
-    static final int INTRINSIC_COUNT = 13;
+    static final int INTRINSIC_COUNT = 12;
 
-    private static final String[] INTRINSIC_NAMES = {"id", "name", "type", "kind", "externalId",
-        "axis", "address", "node", "from", "to", "role", "domain", "links"};
+    private static final String[] INTRINSIC_NAMES = {"$id", "$name", "$type", "$externalId",
+        "$axis", "$address", "$node", "$from", "$to", "$role", "$domain", "$links"};
 
     static final PropertyKeys OF_PROCESS = new PropertyKeys();
 
@@ -64,6 +67,10 @@ public final class PropertyKeys {
         final Integer existing = idsByName.get(name);
         if (existing != null) {
             return existing.intValue();
+        }
+        if (name.charAt(0) == INTRINSIC && !isHop(name)) {
+            throw new IllegalArgumentException("No intrinsic key '" + name + "'; a property's name does not start with "
+                    + INTRINSIC);
         }
         final int assigned = count;
         String[] names = namesById;
@@ -102,6 +109,18 @@ public final class PropertyKeys {
      */
     public int count() {
         return count;
+    }
+
+    /**
+     * A path through an intrinsic id, {@code $from.$node}, is the structure's own name for what keys a
+     * group, and the only other name that starts with {@link #INTRINSIC}.
+     *
+     * @param name a name that starts with it
+     * @return whether it is such a path
+     */
+    private boolean isHop(final String name) {
+        final int dot = name.indexOf('.');
+        return dot > 0 && idsByName.containsKey(name.substring(0, dot));
     }
 
     static boolean isReserved(final int keyId) {

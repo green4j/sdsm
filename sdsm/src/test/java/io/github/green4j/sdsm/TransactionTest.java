@@ -30,7 +30,7 @@ class TransactionTest {
     private View allPods() {
         final Set<String> keys = new LinkedHashSet<>();
         keys.add("rate");
-        final View view = structure.createView("pods", "node[type=pod]", keys,
+        final View view = structure.createView("pods", "node[$type=pod]", keys,
                 DeliveryPolicy.onChange()).join();
         structure.subscribe(view.id(), recorder).join();
         return view;
@@ -43,10 +43,10 @@ class TransactionTest {
 
         structure.run(() -> {
             final Node from = structure.createNode("ingest-0", "pod");
-            final Node to = structure.createNode("aggregate-0", "pod");
+            final Node to = structure.createNode("process-0", "pod");
             final Output out = structure.addOutput(from.id(), "out", "tcp");
             final Input in = structure.addInput(to.id(), "in", "tcp");
-            structure.createLink("ingest->aggregate", "tcp", out.id(), in.id());
+            structure.createLink("ingest->process", "tcp", out.id(), in.id());
             structure.setLong(from.id(), rate, 12_000L);
             structure.setLong(to.id(), rate, 4_000L);
         }).join();

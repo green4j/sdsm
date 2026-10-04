@@ -86,9 +86,7 @@ public final class B10Demand {
 
         @Override
         public void rejected(final Stream observation, final Throwable reason) {
-            System.err.println("not materialized: "
-                    + (observation != null ? observation.externalId() : "a change of state"));
-            reason.printStackTrace(System.err);
+            Show.rejected(observation, reason);
         }
 
         @Override
@@ -167,7 +165,7 @@ public final class B10Demand {
         // Until a client speaks, everything is wanted whole.
         out.accept("-- nobody has said what they want");
         metrics.sees(new Stream("orders", "1", "FLOWING", 100L),
-                new Stream("trades", "1", "FLOWING", 20L));
+                new Stream("shipments", "1", "FLOWING", 20L));
         print(structure, out);
 
         out.accept("-- the screen folds everything away");
@@ -177,23 +175,23 @@ public final class B10Demand {
 
         out.accept("-- the source answers again; the backlog is not written");
         metrics.sees(new Stream("orders", "2", "FLOWING", 110L),
-                new Stream("trades", "2", "STALLED", 25L));
+                new Stream("shipments", "2", "STALLED", 25L));
         print(structure, out);
 
-        final long orders = structure.matchedObjectIds("node[name=orders]").join()[0];
+        final long orders = structure.matchedObjectIds("node[$name=orders]").join()[0];
         out.accept("-- the screen opens orders");
         structure.setInterest("screen", Interest.of(DetailLevel.COARSE)
                 .at(orders, DetailLevel.FINE)).join();
         metrics.told(1, out);
         metrics.sees(new Stream("orders", "3", "FLOWING", 120L),
-                new Stream("trades", "3", "STALLED", 30L));
+                new Stream("shipments", "3", "STALLED", 30L));
         print(structure, out);
 
         out.accept("-- a wall screen wants everything");
         structure.setInterest("wall", Interest.of(DetailLevel.FINE)).join();
         metrics.told(1, out);
         metrics.sees(new Stream("orders", "4", "FLOWING", 125L),
-                new Stream("trades", "4", "STALLED", 35L));
+                new Stream("shipments", "4", "STALLED", 35L));
         print(structure, out);
 
         out.accept("-- the wall screen is switched off");
@@ -203,8 +201,8 @@ public final class B10Demand {
     }
 
     private static void print(final Structure structure, final Consumer<String> out) {
-        for (final Map<String, Object> stream : structure.query("node[type=stream]").join()) {
-            out.accept("  " + stream.get("name") + " " + stream.get("status")
+        for (final Map<String, Object> stream : structure.query("node[$type=stream]").join()) {
+            out.accept("  " + stream.get("$name") + " " + stream.get("status")
                     + " backlog=" + stream.getOrDefault("backlog", "-"));
         }
     }

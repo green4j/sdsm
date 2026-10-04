@@ -161,8 +161,8 @@ class AssemblyTest {
         feed.complete(AREA_A);
 
         awaitState(feed, FeedState.CONVERGED);
-        assertEquals(2, count("node[type=pod]"));
-        assertEquals(2, count("node[axis=placement]"));
+        assertEquals(2, count("node[$type=pod]"));
+        assertEquals(2, count("node[$axis=placement]"));
     }
 
     /**
@@ -224,7 +224,7 @@ class AssemblyTest {
         source.see("pod-1", "v1", AREA_A);
         source.see("pod-3", "v1", AREA_A);
         feed.complete(AREA_A);
-        Await.until(() -> count("node[type=pod]") == 2);
+        Await.until(() -> count("node[$type=pod]") == 2);
 
         assertNotNull(objectWithExternalId("pod-1"));
         assertNull(objectWithExternalId("pod-2"));
@@ -242,7 +242,7 @@ class AssemblyTest {
         source.see("pod-1", "v1", AREA_A);
         feed.complete(AREA_A);
         awaitState(feed, FeedState.CONVERGED);
-        structure.submit(() -> structure.groupBy("ready", "band", "node[type=pod]", "ready")).join();
+        structure.submit(() -> structure.groupBy("ready", "band", "node[$type=pod]", "ready")).join();
 
         source.see("pod-1", "v1", AREA_A);
         source.see("ready:true", "v1", AREA_A);
@@ -250,7 +250,7 @@ class AssemblyTest {
         Await.until(() -> source.rejected.size() == 1);
         awaitTheLoop();
 
-        assertEquals(1, count("node[type=band]"));
+        assertEquals(1, count("node[$type=band]"));
     }
 
     /**
@@ -277,7 +277,7 @@ class AssemblyTest {
 
         roundOverAreas(source, 2);
 
-        assertEquals(AREAS * PODS_PER_AREA + 2, count("node[type=pod]"), "and a marker per round");
+        assertEquals(AREAS * PODS_PER_AREA + 2, count("node[$type=pod]"), "and a marker per round");
     }
 
     private static final int AREAS = 2_000;
@@ -305,7 +305,7 @@ class AssemblyTest {
         awaitState(feed, FeedState.CONVERGED);
 
         feed.removed("pod-2");
-        Await.until(() -> count("node[type=pod]") == 1);
+        Await.until(() -> count("node[$type=pod]") == 1);
 
         assertNotNull(objectWithExternalId("pod-1"));
     }
@@ -332,7 +332,7 @@ class AssemblyTest {
         feed.complete(AREA_A);
         Await.until(() -> placement.materialized == 3);
 
-        assertEquals(2, count("node[type=pod]"));
+        assertEquals(2, count("node[$type=pod]"));
         assertEquals("STALE", stateOf("cluster:eu-de-1"));
 
         feed.available();
@@ -396,7 +396,7 @@ class AssemblyTest {
             secondFeed.complete(AREA_B);
             awaitState(firstFeed, FeedState.CONVERGED);
             awaitState(secondFeed, FeedState.CONVERGED);
-            assertEquals(3, count("node[axis=placement]"));
+            assertEquals(3, count("node[$axis=placement]"));
 
             firstFeed.complete(AREA_A);
             Await.until(() -> objectWithExternalId("pod-1") == null);
@@ -553,7 +553,7 @@ class AssemblyTest {
         feed.complete(AREA_A);
         Await.until(() -> objectWithExternalId("cluster:eu-de-1") == null);
 
-        assertEquals(1, count("node[type=pod] & under(placement, /eu-de/eu-de-2)"));
+        assertEquals(1, count("node[$type=pod] & under(placement, /eu-de/eu-de-2)"));
         assertEquals(List.of(), source.rejected);
     }
 

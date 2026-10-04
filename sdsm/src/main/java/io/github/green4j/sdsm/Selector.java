@@ -1072,11 +1072,11 @@ final class Selector {
         }
 
         private static boolean isIdentifierStart(final char c) {
-            return Character.isLetter(c) || c == '_';
+            return Character.isLetter(c) || c == '_' || c == PropertyKeys.INTRINSIC;
         }
 
         private static boolean isIdentifierPart(final char c) {
-            return Character.isLetterOrDigit(c) || c == '_' || c == '-' || c == '.';
+            return Character.isLetterOrDigit(c) || c == '_' || c == '-' || c == '.' || c == PropertyKeys.INTRINSIC;
         }
 
         private static boolean isBarewordChar(final char c) {

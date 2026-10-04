@@ -15,18 +15,18 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * A set cut by a key has state of its own: the flow links between the same two nodes carrying
- * the same family are one bundle, a node the structure keeps with the sum of what their writers
- * send, and the bundle follows its links as they come, go, change family and change rate.
+ * the same topic are one bundle, a node the structure keeps with the sum of what their writers
+ * send, and the bundle follows its links as they come, go, change topic and change rate.
  */
 class GroupingTest {
 
     private final StructureRuntime runtime = StructureRuntime.create(1, 1, "grouping");
     private final Structure structure = runtime.newStructure();
     private final int rate = structure.propertyKeys().idOf("rate");
-    private final int family = structure.propertyKeys().idOf("family");
+    private final int topic = structure.propertyKeys().idOf("topic");
     private final int stage = structure.propertyKeys().idOf("stage");
 
-    private Node aggregator;
+    private Node billing;
     private Node query;
     private Output enriched;
     private Output minutes;
@@ -37,15 +37,15 @@ class GroupingTest {
 
     @BeforeEach
     void layOut() {
-        aggregator = structure.submit(() -> structure.createNode("aggregator", "aggregator")).join();
+        billing = structure.submit(() -> structure.createNode("billing", "billing")).join();
         query = structure.submit(() -> structure.createNode("todayquery", "todayquery")).join();
         enriched = flow("enriched", "enriched", 100L);
-        minutes = flow("bars-1m", "bars", 10L);
+        minutes = flow("invoices-1m", "invoices", 10L);
         minutesIn = readerOf.get(minutes);
-        hours = flow("bars-1h", "bars", 1L);
-        bundles = structure.submit(() -> structure.groupBy("bundles", "bundle", "link[type=flow]",
-                "from.node", "to.node", "from.family")).join();
-        structure.run(() -> structure.deriveEach(bundles.id(), rate, Fold.SUM, Over.members("from.rate"))).join();
+        hours = flow("invoices-1h", "invoices", 1L);
+        bundles = structure.submit(() -> structure.groupBy("bundles", "bundle", "link[$type=flow]",
+                "$from.$node", "$to.$node", "$from.topic")).join();
+        structure.run(() -> structure.deriveEach(bundles.id(), rate, Fold.SUM, Over.members("$from.rate"))).join();
     }
 
     @AfterEach
@@ -54,37 +54,37 @@ class GroupingTest {
     }
 
     @Test
-    void shouldKeepABundleForEveryPairAndFamily() {
+    void shouldKeepABundleForEveryPairAndTopic() {
         assertEquals(2, structure.groups(bundles.id()).join().length);
-        final Map<String, Object> bars = bundle("bars");
+        final Map<String, Object> invoices = bundle("invoices");
 
-        assertEquals(11L, bars.get("rate"));
-        assertEquals(2L, bars.get("rate.total"));
-        assertEquals(aggregator.id(), bars.get("from.node"));
-        assertEquals(query.id(), bars.get("to.node"));
+        assertEquals(11L, invoices.get("rate"));
+        assertEquals(2L, invoices.get("rate.total"));
+        assertEquals(billing.id(), invoices.get("$from.$node"));
+        assertEquals(query.id(), invoices.get("$to.$node"));
         assertEquals(100L, bundle("enriched").get("rate"));
-        assertEquals(2, structure.matchedObjectIds("node[type=bundle]").join().length);
+        assertEquals(2, structure.matchedObjectIds("node[$type=bundle]").join().length);
     }
 
     @Test
     void shouldFoldBothEndsSideBySide() {
         final int received = structure.propertyKeys().idOf("received");
-        structure.run(() -> structure.deriveEach(bundles.id(), received, Fold.SUM, Over.members("to.rate"))).join();
+        structure.run(() -> structure.deriveEach(bundles.id(), received, Fold.SUM, Over.members("$to.rate"))).join();
         set(minutesIn, rate, 7L);
 
-        final Map<String, Object> bars = bundle("bars");
-        assertEquals(11L, bars.get("rate"));
-        assertEquals(7L, bars.get("received"));
-        assertEquals(1L, bars.get("received.known"), "one reader has not said");
+        final Map<String, Object> invoices = bundle("invoices");
+        assertEquals(11L, invoices.get("rate"));
+        assertEquals(7L, invoices.get("received"));
+        assertEquals(1L, invoices.get("received.known"), "one reader has not said");
     }
 
     @Test
     void shouldFollowWhatItsLinksCarry() {
         set(minutes, rate, 30L);
-        assertEquals(31L, bundle("bars").get("rate"));
+        assertEquals(31L, bundle("invoices").get("rate"));
 
-        structure.run(() -> structure.setText(hours.id(), family, "enriched")).join();
-        assertEquals(30L, bundle("bars").get("rate"));
+        structure.run(() -> structure.setText(hours.id(), topic, "enriched")).join();
+        assertEquals(30L, bundle("invoices").get("rate"));
         assertEquals(101L, bundle("enriched").get("rate"));
 
         structure.run(() -> structure.remove(minutes.id())).join();
@@ -95,21 +95,21 @@ class GroupingTest {
     @Test
     void shouldCutNodesAsWellAndRefuseWhatIsNoPath() {
         structure.run(() -> {
-            structure.setText(aggregator.id(), stage, "aggregate");
+            structure.setText(billing.id(), stage, "process");
             structure.setText(query.id(), stage, "serve");
         }).join();
         final Grouping bands = structure.submit(() -> structure.groupBy("bands", "band",
-                "node[stage=aggregate], node[stage=serve]", "stage")).join();
+                "node[stage=process], node[stage=serve]", "stage")).join();
 
         assertEquals(2, structure.groups(bands.id()).join().length);
-        assertEquals(1, structure.matchedObjectIds("node[type=band][stage=serve]").join().length);
+        assertEquals(1, structure.matchedObjectIds("node[$type=band][stage=serve]").join().length);
         structure.run(() -> structure.removeGrouping(bands.id())).join();
-        assertEquals(0, structure.matchedObjectIds("node[type=band]").join().length);
+        assertEquals(0, structure.matchedObjectIds("node[$type=band]").join().length);
 
         assertThrows(CompletionException.class,
-                () -> structure.submit(() -> structure.groupBy("bad", "x", "link", "from.node.stage")).join());
+                () -> structure.submit(() -> structure.groupBy("bad", "x", "link", "$from.$node.stage")).join());
         final Throwable cause = assertThrows(CompletionException.class, () -> structure.run(
-                () -> structure.derive(aggregator.id(), rate, Fold.SUM, Over.members("from.rate"))).join()).getCause();
+                () -> structure.derive(billing.id(), rate, Fold.SUM, Over.members("$from.rate"))).join()).getCause();
         assertTrue(cause instanceof IllegalArgumentException, String.valueOf(cause));
     }
 
@@ -119,17 +119,17 @@ class GroupingTest {
      */
     @Test
     void shouldKeepTheIdsUnderAGroupingsNameToItsGroups() {
-        final long bars = bundleId("bars");
-        final String barsId = structure.submit(
-                () -> structure.lookupOrNull(bars).externalId()).join();
+        final long invoices = bundleId("invoices");
+        final String invoicesId = structure.submit(
+                () -> structure.lookupOrNull(invoices).externalId()).join();
 
-        refused(() -> structure.groupBy("bundles", "other", "link", "from.node"));
-        refused(() -> structure.groupBy("a:b", "other", "link", "from.node"));
+        refused(() -> structure.groupBy("bundles", "other", "link", "$from.$node"));
+        refused(() -> structure.groupBy("a:b", "other", "link", "$from.$node"));
         refused(() -> structure.createNode("clash", "x", "bundles:mine"));
-        assertEquals(bars, structure.submit(() -> structure.findByExternalId(barsId).id()).join());
+        assertEquals(invoices, structure.submit(() -> structure.findByExternalId(invoicesId).id()).join());
 
         structure.submit(() -> structure.createNode("early", "x", "later:1")).join();
-        refused(() -> structure.groupBy("later", "other", "link", "from.node"));
+        refused(() -> structure.groupBy("later", "other", "link", "$from.$node"));
 
         structure.run(() -> structure.removeGrouping(bundles.id())).join();
         structure.submit(() -> structure.createNode("free", "x", "bundles:mine")).join();
@@ -148,7 +148,7 @@ class GroupingTest {
             structure.setLong(number.id(), stage, 5L);
             structure.setText(spelling.id(), stage, "5");
             structure.setText(quoted.id(), stage, "\"5\"");
-            return structure.groupBy("bands", "band", "node[type=member]", "stage");
+            return structure.groupBy("bands", "band", "node[$type=member]", "stage");
         }).join();
 
         final long[] groups = structure.groups(bands.id()).join();
@@ -169,21 +169,21 @@ class GroupingTest {
      */
     @Test
     void shouldRefuseToWriteAGroupsKeyByHand() {
-        final long bars = bundleId("bars");
-        final int fromFamily = structure.propertyKeys().idOf("from.family");
+        final long invoices = bundleId("invoices");
+        final int fromTopic = structure.propertyKeys().idOf("$from.topic");
         final int label = structure.propertyKeys().idOf("label");
 
         refused(() -> {
-            structure.setText(bars, fromFamily, "lie");
+            structure.setText(invoices, fromTopic, "lie");
             return null;
         });
         refused(() -> {
-            structure.removeProperty(bars, fromFamily);
+            structure.removeProperty(invoices, fromTopic);
             return null;
         });
-        structure.run(() -> structure.setText(bars, label, "bars bundle")).join();
-        assertEquals("bars", structure.snapshotObject(bars).join().get("from.family"));
-        assertEquals("bars bundle", structure.snapshotObject(bars).join().get("label"));
+        structure.run(() -> structure.setText(invoices, label, "invoices bundle")).join();
+        assertEquals("invoices", structure.snapshotObject(invoices).join().get("$from.topic"));
+        assertEquals("invoices bundle", structure.snapshotObject(invoices).join().get("label"));
     }
 
     /**
@@ -192,24 +192,24 @@ class GroupingTest {
      */
     @Test
     void shouldRefuseToFoldIntoAGroupsKey() {
-        final long bars = bundleId("bars");
-        final int fromFamily = structure.propertyKeys().idOf("from.family");
+        final long invoices = bundleId("invoices");
+        final int fromTopic = structure.propertyKeys().idOf("$from.topic");
         final Grouping bands = structure.submit(
-                () -> structure.groupBy("bands", "band", "node[type=nothing]", "stage")).join();
+                () -> structure.groupBy("bands", "band", "node[$type=nothing]", "stage")).join();
 
         refused(() -> {
-            structure.derive(bars, fromFamily, Fold.SUM, Over.members("from.rate"));
+            structure.derive(invoices, fromTopic, Fold.SUM, Over.members("$from.rate"));
             return null;
         });
         refused(() -> {
-            structure.deriveEach(bundles.id(), fromFamily, Fold.SUM, Over.members("from.rate"));
+            structure.deriveEach(bundles.id(), fromTopic, Fold.SUM, Over.members("$from.rate"));
             return null;
         });
         refused(() -> {
             structure.deriveEach(bands.id(), stage, Fold.SUM, Over.members("rate"));
             return null;
         });
-        assertEquals("bars", structure.snapshotObject(bars).join().get("from.family"));
+        assertEquals("invoices", structure.snapshotObject(invoices).join().get("$from.topic"));
     }
 
     private void refused(final java.util.function.Supplier<?> change) {
@@ -220,7 +220,7 @@ class GroupingTest {
 
     private long bundleId(final String fam) {
         for (final long id : structure.groups(bundles.id()).join()) {
-            if (fam.equals(structure.snapshotObject(id).join().get("from.family"))) {
+            if (fam.equals(structure.snapshotObject(id).join().get("$from.topic"))) {
                 return id;
             }
         }
@@ -241,8 +241,8 @@ class GroupingTest {
             return node.id();
         }).join();
         final Grouping queues = structure.submit(
-                () -> structure.groupBy("queues", "queues", "input[type=queue]", "node.region")).join();
-        structure.run(() -> structure.deriveEach(queues.id(), weight, Fold.SUM, Over.members("node.weight"))).join();
+                () -> structure.groupBy("queues", "queues", "input[$type=queue]", "$node.region")).join();
+        structure.run(() -> structure.deriveEach(queues.id(), weight, Fold.SUM, Over.members("$node.weight"))).join();
 
         structure.run(() -> structure.setLong(broker, weight, 3L)).join();
         structure.run(() -> structure.setText(broker, region, "us")).join();
@@ -250,7 +250,7 @@ class GroupingTest {
         final long[] groups = structure.groups(queues.id()).join();
         assertEquals(1, groups.length);
         final Map<String, Object> group = structure.snapshotObject(groups[0]).join();
-        assertEquals("us", group.get("node.region"));
+        assertEquals("us", group.get("$node.region"));
         assertEquals(3L, group.get("weight"));
     }
 
@@ -262,11 +262,11 @@ class GroupingTest {
     void shouldFollowAMemberAsItIsPlaced() {
         final long[] ids = structure.submit(() -> new long[]{
                 structure.createNode("eu", "region").id(),
-                structure.createNode("silo-1", "silo").id(),
+                structure.createNode("cell-1", "cell").id(),
                 structure.createNode("pod-1", "pod").id()}).join();
         structure.run(() -> structure.setText(ids[2], stage, "serve")).join();
         final Grouping placed = structure.submit(() -> structure.groupBy("placed", "band",
-                "node[type=pod] & under(placement, /eu)", "stage")).join();
+                "node[$type=pod] & under(placement, /eu)", "stage")).join();
 
         structure.run(() -> {
             structure.contain(ids[1], ids[2], "placement");
@@ -290,11 +290,11 @@ class GroupingTest {
         structure.run(() -> {
             for (int i = 0; i < members; i++) {
                 ids[i] = structure.createNode("member-" + i, "member").id();
-                structure.setText(ids[i], family, "herd");
+                structure.setText(ids[i], topic, "herd");
             }
         }).join();
         final Grouping herds =
-                structure.submit(() -> structure.groupBy("herds", "herd", "node[type=member]", "family")).join();
+                structure.submit(() -> structure.groupBy("herds", "herd", "node[$type=member]", "topic")).join();
         structure.run(() -> structure.deriveEach(herds.id(), rate, Fold.SUM, Over.members("rate"))).join();
 
         structure.run(() -> {
@@ -317,13 +317,13 @@ class GroupingTest {
             final long[] made = new long[2];
             for (int i = 0; i < made.length; i++) {
                 made[i] = structure.createNode("member-" + i, "member").id();
-                structure.setText(made[i], family, "herd");
+                structure.setText(made[i], topic, "herd");
                 structure.setDouble(made[i], rate, Double.MAX_VALUE);
             }
             return made;
         }).join();
         final Grouping herds =
-                structure.submit(() -> structure.groupBy("herds", "herd", "node[type=member]", "family")).join();
+                structure.submit(() -> structure.groupBy("herds", "herd", "node[$type=member]", "topic")).join();
         structure.run(() -> structure.deriveEach(herds.id(), rate, Fold.SUM, Over.members("rate"))).join();
         final long herd = structure.groups(herds.id()).join()[0];
 
@@ -351,7 +351,7 @@ class GroupingTest {
 
         assertTrue(cause instanceof IllegalArgumentException, String.valueOf(cause));
         assertEquals(2, structure.groups(bundles.id()).join().length);
-        assertEquals(11L, bundle("bars").get("rate"));
+        assertEquals(11L, bundle("invoices").get("rate"));
     }
 
     /**
@@ -361,33 +361,33 @@ class GroupingTest {
     @Test
     void shouldChangeNothingWhenAFoldOfEveryGroupIsRefused() {
         assertThrows(CompletionException.class, () -> structure.run(() -> structure.deriveEach(
-                bundles.id(), rate, Fold.MAX, Over.members("from.rate"))).join());
+                bundles.id(), rate, Fold.MAX, Over.members("$from.rate"))).join());
 
-        flow("bars-1d", "daily", 3L);
+        flow("invoices-1d", "daily", 3L);
 
         assertEquals(3L, bundle("daily").get("rate"));
     }
 
     @Test
     void shouldCutByWhatHoldsThem() {
-        final long blue = structure.submit(() -> structure.createNode("blue", "silo")).join().id();
-        final long green = structure.submit(() -> structure.createNode("green", "silo")).join().id();
-        final Node other = structure.submit(() -> structure.createNode("aggregator-1", "aggregator")).join();
+        final long blue = structure.submit(() -> structure.createNode("blue", "cell")).join().id();
+        final long green = structure.submit(() -> structure.createNode("green", "cell")).join().id();
+        final Node other = structure.submit(() -> structure.createNode("billing-1", "billing")).join();
         final int region = structure.propertyKeys().idOf("region");
-        structure.run(() -> structure.contain(blue, aggregator.id(), "placement")).join();
+        structure.run(() -> structure.contain(blue, billing.id(), "placement")).join();
         structure.run(() -> structure.contain(blue, query.id(), "placement")).join();
         structure.run(() -> structure.contain(green, other.id(), "placement")).join();
         structure.run(() -> {
-            for (final Node node : new Node[]{aggregator, other}) {
-                structure.setText(node.id(), stage, "aggregate");
+            for (final Node node : new Node[]{billing, other}) {
+                structure.setText(node.id(), stage, "process");
             }
             structure.setText(query.id(), stage, "serve");
             structure.setText(blue, region, "eu-de");
             structure.setText(green, region, "eu-fr");
         }).join();
         final Grouping bands = structure.submit(() -> structure.groupBy("bands", "band",
-                "node[stage=aggregate], node[stage=serve]", "parent(placement)", "stage")).join();
-        final Grouping regions = structure.submit(() -> structure.groupBy("regions", "area", "node[stage=aggregate]",
+                "node[stage=process], node[stage=serve]", "parent(placement)", "stage")).join();
+        final Grouping regions = structure.submit(() -> structure.groupBy("regions", "area", "node[stage=process]",
                 "parent(placement).region")).join();
 
         assertEquals(3, structure.groups(bands.id()).join().length);
@@ -401,17 +401,17 @@ class GroupingTest {
         assertEquals(1, structure.groups(regions.id()).join().length);
 
         structure.run(() -> structure.setText(blue, region, "eu-fr")).join();
-        assertEquals(1, structure.matchedObjectIds("node[type=area][name=eu-fr]").join().length);
+        assertEquals(1, structure.matchedObjectIds("node[$type=area][$name=eu-fr]").join().length);
         assertThrows(CompletionException.class,
                 () -> structure.submit(() -> structure.groupBy("bad", "x", "node", "parent()")).join());
     }
 
     private Output flow(final String name, final String kindOfFlow, final long sent) {
-        final Output out = structure.submit(() -> structure.addOutput(aggregator.id(), name, "flow")).join();
+        final Output out = structure.submit(() -> structure.addOutput(billing.id(), name, "flow")).join();
         final Input in = structure.submit(() -> structure.addInput(query.id(), name, "flow")).join();
         readerOf.put(out, in);
         structure.run(() -> {
-            structure.setText(out.id(), family, kindOfFlow);
+            structure.setText(out.id(), topic, kindOfFlow);
             structure.setLong(out.id(), rate, sent);
             structure.provide(out.id(), name);
             structure.require(in.id(), name);
@@ -424,14 +424,14 @@ class GroupingTest {
     }
 
     private Map<String, Object> band(final String ofStage) {
-        final long[] ids = structure.matchedObjectIds("node[type=band][stage=" + ofStage + "]").join();
+        final long[] ids = structure.matchedObjectIds("node[$type=band][stage=" + ofStage + "]").join();
         assertEquals(1, ids.length, ofStage);
         return structure.snapshotObject(ids[0]).join();
     }
 
-    private Map<String, Object> bundle(final String ofFamily) {
-        final long[] ids = structure.matchedObjectIds("node[type=bundle][from.family=" + ofFamily + "]").join();
-        assertEquals(1, ids.length, ofFamily);
+    private Map<String, Object> bundle(final String ofTopic) {
+        final long[] ids = structure.matchedObjectIds("node[$type=bundle][$from.topic=" + ofTopic + "]").join();
+        assertEquals(1, ids.length, ofTopic);
         return structure.snapshotObject(ids[0]).join();
     }
 }

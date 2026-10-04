@@ -54,7 +54,7 @@ class ViewChannelTest {
 
     @Test
     void shouldPutAViewOnTheAirAndTakeItOff() {
-        channel.publish("streams", "node[type=stream]", Set.of("backlog"), INTERVAL).join();
+        channel.publish("streams", "node[$type=stream]", Set.of("backlog"), INTERVAL).join();
         assertNotNull(channel.getEntitySubscriptions("streams"));
         assertEquals(1, views());
 

@@ -99,9 +99,9 @@ class IdentityTest {
         final long known = observePod("pod-uid-1", "ingest-0");
         observePod("pod-uid-2", "ingest-1");
 
-        assertEquals("pod-uid-1", structure.snapshotObject(known).join().get("externalId"));
+        assertEquals("pod-uid-1", structure.snapshotObject(known).join().get("$externalId"));
         assertArrayEquals(new long[]{known},
-                structure.matchedObjectIds("node[externalId=pod-uid-1]").join());
+                structure.matchedObjectIds("node[$externalId=pod-uid-1]").join());
     }
 
     @Test

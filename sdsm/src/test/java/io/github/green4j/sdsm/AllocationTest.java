@@ -88,7 +88,7 @@ class AllocationTest {
                 structure.contain(cluster, nodeIds[i], "placement");
             }
             structure.derive(cluster, keyIds[0], Fold.MAX, Over.children(keyIds[0], "pod"));
-            final Grouping states = structure.groupBy("states", "state", "node[type=pod]", "state");
+            final Grouping states = structure.groupBy("states", "state", "node[$type=pod]", "state");
             structure.deriveEach(states.id(), keyIds[1], Fold.SUM, Over.members("metric-1"));
         }).join();
         shouldCarryAStreamOfChangesWithoutAllocating();
@@ -105,7 +105,7 @@ class AllocationTest {
             for (int i = 0; i < NODES; i++) {
                 structure.setLong(nodeIds[i], phase, i % 2);
             }
-            structure.groupBy("phases", "phase-group", "node[type=pod]", "phase");
+            structure.groupBy("phases", "phase-group", "node[$type=pod]", "phase");
         }).join();
 
         final long growth = growthOf(i -> {

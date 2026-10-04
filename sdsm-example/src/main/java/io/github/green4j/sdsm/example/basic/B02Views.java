@@ -32,15 +32,15 @@ public final class B02Views {
 
             // The services, with the links between them and the ports those links join.
             final View services = structure.createView("services",
-                    "node[type=service], between(node[type=service])",
+                    "node[$type=service], between(node[$type=service])",
                     null, DeliveryPolicy.onChange()).join();
-            // Only what is ready, and of it only whether it is: what an object is - its name,
-            // its kind - comes whatever the view asks for.
+            // Only what is ready, and of it only whether it is: what an object is - its $name,
+            // its $type - comes whatever the view asks for.
             final View readyOnes = structure.createView("ready", "node[ready=true]",
                     Collections.singleton("ready"), DeliveryPolicy.onChange()).join();
             // One node, and every link touching it, wherever the other end is.
             final View aroundIngest = structure.createView("around ingest",
-                    "node[name=ingest], touching(node[name=ingest])",
+                    "node[$name=ingest], touching(node[$name=ingest])",
                     Collections.singleton("ready"), DeliveryPolicy.onChange()).join();
 
             out.accept("-- subscribed");
@@ -82,14 +82,14 @@ public final class B02Views {
             // What is not ready - what does not say among it, which [ready!=true] would miss.
             show(structure, "node & ![ready=true]", out);
             // The ports of a node, linked or not.
-            show(structure, "on(node[name=ingest])", out);
+            show(structure, "on(node[$name=ingest])", out);
         }
     }
 
     private static void show(final Structure structure, final String selector, final Consumer<String> out) {
         final List<String> names = new ArrayList<>();
         for (final Map<String, Object> object : structure.query(selector).join()) {
-            names.add(object.get("kind") + " " + object.get("name"));
+            names.add(object.get("$type") + " " + object.get("$name"));
         }
         Collections.sort(names);
         out.accept(selector + " " + names);

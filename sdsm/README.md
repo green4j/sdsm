@@ -93,8 +93,8 @@ intrinsic ones every object answers from its own fields - listed in the
 object that has a value under `key`, whatever it is.
 
 A port that declares several addresses is compared one address at a time:
-`input[address="tb:trades"]` holds an input that declares it among others, `[address~"trades"]`
-one with any address containing it, and `[address!="tb:trades"]` one that does not declare it.
+`input[$address="queue:orders"]` holds an input that declares it among others, `[$address~"orders"]`
+one with any address containing it, and `[$address!="queue:orders"]` one that does not declare it.
 
 **An absent property matches nothing** - under every operator, `!=` included. `[cpu!=0]` holds no
 object whose `cpu` is not there: a value nobody supplies is unknown, not different.
@@ -122,7 +122,7 @@ are written after `\`.
 
 ```
 node & under(placement, /eu-de/*)                 -- nodes below any child of eu-de
-under(placement, /region:eu-de/silo:*/tradingday:*)
+under(placement, /region:eu-de/zone:*/rack:*)
 ```
 
 The selection follows moves: a node placed under another parent, alone or with what it holds,
@@ -134,8 +134,8 @@ enters or leaves at once. The path must name at least one segment.
 - `touching(e)` holds the links at least one of whose ends' nodes `e` holds.
 
 ```
-node[type=service], between(node[type=service])   -- services and the links among them
-node[name=ingest], touching(node[name=ingest])    -- one node and every link at it
+node[$type=service], between(node[$type=service])   -- services and the links among them
+node[$name=ingest], touching(node[$name=ingest])    -- one node and every link at it
 ```
 
 They are kept up to date as the nodes change. A view holding a link also delivers the two ports
@@ -166,7 +166,7 @@ leaves green.
 
 #### Quoting and escapes
 
-A key or a value that is not a bare identifier or bareword - spaces, brackets, operators, quotes,
+A key or a value that is not a bare identifier or bareword - spaces, brackets, operators, payments,
 `:`, `/`, `+` - is quoted. Inside a quoted string exactly two escapes are recognised: the quote
 that opened it, and `\\`.
 
@@ -193,15 +193,15 @@ literal that is not a number, `under` without a path.
 *                                               -- everything
 node                                            -- all nodes
 node[zone=eu] & [status!=DOWN]                  -- nodes in eu that are not DOWN
-node[zone=eu] , link[type=tcp]                  -- eu nodes, or tcp links
+node[zone=eu] , link[$type=tcp]                  -- eu nodes, or tcp links
 node & ![status=DOWN]                           -- nodes not DOWN, those with no status among them
-input & !*[address]                             -- inputs that declare no address
-node[type=pod] & !under(placement, /eu-de/blue) -- pods outside blue
+input & !*[$address]                             -- inputs that declare no address
+node[$type=pod] & !under(placement, /eu-de/blue) -- pods outside blue
 (node , link) & [owner~"team-"]                 -- nodes or links whose owner contains "team-"
 node[cpu>80] & [load<=0.9]                      -- numeric order
-input[address="tb:trades.eu"]                   -- who is waiting for an address
-node & under(placement, /eu-de/blue)            -- nodes below the blue silo of eu-de
-node[type=service], between(node[type=service]) -- services and the links among them
+input[$address="queue:orders.eu"]                -- who is waiting for an address
+node & under(placement, /eu-de/blue)            -- nodes below blue of eu-de
+node[$type=service], between(node[$type=service]) -- services and the links among them
 *["weird key with spaces" = "v"]                -- quoted key
 link[description = 'It\'s ok']                  -- escaped quote
 ```

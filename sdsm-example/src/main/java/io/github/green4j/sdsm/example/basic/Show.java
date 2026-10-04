@@ -2,6 +2,7 @@ package io.github.green4j.sdsm.example.basic;
 
 import io.github.green4j.sdsm.ChangeCursor;
 import io.github.green4j.sdsm.ChangeKind;
+import io.github.green4j.sdsm.Observation;
 import io.github.green4j.sdsm.StructureBatch;
 
 import java.util.concurrent.TimeUnit;
@@ -10,9 +11,10 @@ import java.util.function.Consumer;
 
 /**
  * What the examples share: a batch written out a line per record, the properties of one
- * object gathered on one line, and a wait for something another thread does.
+ * object gathered on one line, a wait for something another thread does, and what a source says
+ * of what the structure would not take.
  */
-final class Show {
+public final class Show {
 
     /**
      * Writes a batch out. A batch is lent only for the call, so it is read here and nowhere
@@ -52,7 +54,7 @@ final class Show {
     /**
      * @param condition what another thread is to bring about
      */
-    static void await(final BooleanSupplier condition) {
+    public static void await(final BooleanSupplier condition) {
         final long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
         while (!condition.getAsBoolean()) {
             if (System.nanoTime() > deadline) {
@@ -60,6 +62,17 @@ final class Show {
             }
             Thread.yield();
         }
+    }
+
+    /**
+     * What a source of an example does with what the structure would not take: says it.
+     *
+     * @param observation what was not taken, or null when it was not an observation
+     * @param reason      why
+     */
+    public static void rejected(final Observation observation, final Throwable reason) {
+        System.err.println("not materialized: " + (observation != null ? observation.externalId() : "what was said"));
+        reason.printStackTrace(System.err);
     }
 
     private static void flush(final StringBuilder properties, final Consumer<String> out) {

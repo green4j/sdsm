@@ -42,11 +42,11 @@ class ClientFramesTest {
         assertEquals("topology", frame.view());
 
         assertTrue(frame.read("{\"op\":\"interest\",\"base\":\"COARSE\","
-                + "\"overrides\":{\"eu-de-1/blue/aggregator\":\"OFF\"}}"));
+                + "\"overrides\":{\"eu-de-1/blue/billing\":\"OFF\"}}"));
         assertEquals("interest", frame.op());
         assertEquals(DetailLevel.COARSE, frame.base());
         assertEquals(1, frame.overrideCount());
-        assertEquals("eu-de-1/blue/aggregator", frame.overrideIdAt(0));
+        assertEquals("eu-de-1/blue/billing", frame.overrideIdAt(0));
         assertEquals(DetailLevel.OFF, frame.overrideLevelAt(0));
 
         assertFalse(frame.read("{\"op\":"), "half a frame is not a frame");
@@ -71,17 +71,17 @@ class ClientFramesTest {
     @Test
     void shouldTurnAFrameIntoDemandOnTheObjectsItNames() {
         structure.run(() -> {
-            structure.createNode("aggregator", "pod", "eu-de-1/blue/aggregator");
-            structure.createNode("CHANNEL_1", "stream", "eu-de-1/blue/CHANNEL_1");
+            structure.createNode("billing", "pod", "eu-de-1/blue/billing");
+            structure.createNode("orders", "stream", "eu-de-1/blue/orders");
         }).join();
 
         frame.read("{\"op\":\"interest\",\"base\":\"COARSE\",\"overrides\":{"
-                + "\"eu-de-1/blue/aggregator\":\"OFF\","
+                + "\"eu-de-1/blue/billing\":\"OFF\","
                 + "\"eu-de-1/blue/nothing-here\":\"FINE\"}}");
         frames.wants("ws-1", frame);
 
-        awaitTrue(() -> levelOf("eu-de-1/blue/aggregator") == DetailLevel.OFF);
-        assertEquals(DetailLevel.COARSE, levelOf("eu-de-1/blue/CHANNEL_1"));
+        awaitTrue(() -> levelOf("eu-de-1/blue/billing") == DetailLevel.OFF);
+        assertEquals(DetailLevel.COARSE, levelOf("eu-de-1/blue/orders"));
     }
 
     /**

@@ -9,8 +9,10 @@ import io.github.green4j.sdsm.BatchSubscriber;
 import io.github.green4j.sdsm.DeliveryPolicy;
 import io.github.green4j.sdsm.Structure;
 import io.github.green4j.sdsm.StructureBatch;
+import io.netty.buffer.ByteBuf;
 import io.netty.buffer.Unpooled;
 
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
@@ -212,13 +214,13 @@ public final class ViewChannel extends Channel<ViewChannel.ViewFeed> {
                     });
         }
 
-        private static io.netty.buffer.ByteBuf copyOf(final ByteArray rendered) {
+        private static ByteBuf copyOf(final ByteArray rendered) {
             return Unpooled.copiedBuffer(rendered.array(), rendered.start(), rendered.length());
         }
 
         private static String text(final ByteArray rendered) {
             return new String(rendered.array(), rendered.start(), rendered.length(),
-                    java.nio.charset.StandardCharsets.UTF_8);
+                    StandardCharsets.UTF_8);
         }
     }
 }

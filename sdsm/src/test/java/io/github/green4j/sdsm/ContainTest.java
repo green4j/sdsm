@@ -16,7 +16,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * A node holds nodes on an axis - a region its silos, a silo its components, a component what
+ * A node holds nodes on an axis - a region its cells, a cell its components, a component what
  * it runs on - and is then what a group is: on paths, under selectors, folding its children.
  */
 class ContainTest {
@@ -32,20 +32,20 @@ class ContainTest {
     private long region;
     private long blue;
     private long green;
-    private long aggregator;
+    private long billing;
     private long pod;
 
     @BeforeEach
     void place() {
         region = node("eu-de", "region");
-        blue = node("blue", "silo");
-        green = node("green", "silo");
-        aggregator = node("aggregator-0", "aggregator");
-        pod = node("aggregator-0-a", "pod");
+        blue = node("blue", "cell");
+        green = node("green", "cell");
+        billing = node("billing-0", "billing");
+        pod = node("billing-0-a", "pod");
         contain(region, blue, PLACEMENT);
         contain(region, green, PLACEMENT);
-        contain(blue, aggregator, PLACEMENT);
-        contain(aggregator, pod, DEPLOYMENT);
+        contain(blue, billing, PLACEMENT);
+        contain(billing, pod, DEPLOYMENT);
     }
 
     @AfterEach
@@ -55,15 +55,15 @@ class ContainTest {
 
     @Test
     void shouldGiveWhatItHoldsAPathAndAPlaceUnderIt() {
-        assertEquals(Path.parse("/region:eu-de/silo:blue/aggregator:aggregator-0"),
-                structure.pathOf(aggregator, PLACEMENT).join());
-        assertEquals(Path.parse("/aggregator:aggregator-0/pod:aggregator-0-a"),
+        assertEquals(Path.parse("/region:eu-de/cell:blue/billing:billing-0"),
+                structure.pathOf(billing, PLACEMENT).join());
+        assertEquals(Path.parse("/billing:billing-0/pod:billing-0-a"),
                 structure.pathOf(pod, DEPLOYMENT).join());
-        assertEquals(aggregator, structure.resolve(PLACEMENT, Path.parse("/eu-de/blue/aggregator-0")).join());
-        assertEquals(List.of(blue, green, aggregator), matched("under(placement, /eu-de)"));
-        assertEquals(List.of(pod), matched("node & under(deployment, /aggregator-0)"));
-        assertEquals(PLACEMENT, structure.snapshotObject(blue).join().get("axis"));
-        assertNull(structure.snapshotObject(pod).join().get("axis"));
+        assertEquals(billing, structure.resolve(PLACEMENT, Path.parse("/eu-de/blue/billing-0")).join());
+        assertEquals(List.of(blue, green, billing), matched("under(placement, /eu-de)"));
+        assertEquals(List.of(pod), matched("node & under(deployment, /billing-0)"));
+        assertEquals(PLACEMENT, structure.snapshotObject(blue).join().get("$axis"));
+        assertNull(structure.snapshotObject(pod).join().get("$axis"));
     }
 
     /**
@@ -72,30 +72,30 @@ class ContainTest {
      */
     @Test
     void shouldChangeNothingWhenAPlacementIsRefused() {
-        final long orphan = node("orphan", "silo");
-        assertThrows(CompletionException.class, () -> contain(orphan, aggregator, PLACEMENT),
+        final long orphan = node("orphan", "cell");
+        assertThrows(CompletionException.class, () -> contain(orphan, billing, PLACEMENT),
                 "a second parent on the axis");
 
         contain(orphan, pod, "network");
-        assertEquals("network", structure.snapshotObject(orphan).join().get("axis"));
-        assertThrows(CompletionException.class, () -> contain(aggregator, pod, PLACEMENT),
+        assertEquals("network", structure.snapshotObject(orphan).join().get("$axis"));
+        assertThrows(CompletionException.class, () -> contain(billing, pod, PLACEMENT),
                 "held, but on another axis");
     }
 
     @Test
     void shouldKeepEveryAxisATree() {
-        assertThrows(CompletionException.class, () -> contain(green, aggregator, PLACEMENT),
+        assertThrows(CompletionException.class, () -> contain(green, billing, PLACEMENT),
                 "a second parent on the axis");
-        assertThrows(CompletionException.class, () -> contain(aggregator, region, PLACEMENT),
+        assertThrows(CompletionException.class, () -> contain(billing, region, PLACEMENT),
                 "a node holds on one axis");
         assertThrows(CompletionException.class, () -> contain(blue, region, PLACEMENT), "a cycle");
         assertThrows(CompletionException.class, () -> contain(blue, blue, PLACEMENT), "itself");
 
-        contain(blue, aggregator, PLACEMENT);   // where it is already
-        structure.run(() -> structure.uncontain(blue, aggregator)).join();
-        contain(green, aggregator, PLACEMENT);
-        assertEquals(Path.parse("/region:eu-de/silo:green/aggregator:aggregator-0"),
-                structure.pathOf(aggregator, PLACEMENT).join());
+        contain(blue, billing, PLACEMENT);   // where it is already
+        structure.run(() -> structure.uncontain(blue, billing)).join();
+        contain(green, billing, PLACEMENT);
+        assertEquals(Path.parse("/region:eu-de/cell:green/billing:billing-0"),
+                structure.pathOf(billing, PLACEMENT).join());
     }
 
     /**
@@ -120,12 +120,12 @@ class ContainTest {
 
     @Test
     void shouldHoldOneNodeOnEveryAxis() {
-        final long stage = node("aggregate", "stage");
+        final long stage = node("process", "stage");
         final long colour = node("blue", "colour");
         contain(stage, pod, "stage");
         contain(colour, pod, "colour");
 
-        assertEquals(List.of(aggregator, stage, colour),
+        assertEquals(List.of(billing, stage, colour),
                 Arrays.stream(structure.parents(pod).join()).boxed().collect(Collectors.toList()));
     }
 
@@ -138,7 +138,7 @@ class ContainTest {
                 structure.derive(holder, health, Fold.MAX, Over.children(health, null));
             }
         }).join();
-        set(aggregator, 1L);
+        set(billing, 1L);
         set(query, 2L);
 
         assertEquals(1L, value(blue));
@@ -146,7 +146,7 @@ class ContainTest {
 
         set(query, 0L);
         assertEquals(1L, value(region));
-        structure.run(() -> structure.uncontain(blue, aggregator)).join();
+        structure.run(() -> structure.uncontain(blue, billing)).join();
         assertNull(value(blue));
         assertEquals(0L, value(region));
     }
@@ -155,13 +155,13 @@ class ContainTest {
     void shouldTellAViewWhatHoldsWhat() {
         structure.subscribe(structure.createView("tree", "node", Set.of(),
                 DeliveryPolicy.onChange()).join().id(), recorder).join();
-        assertTrue(recorder.membership(ChangeKind.CONTAINED).contains(pod + " in " + aggregator));
+        assertTrue(recorder.membership(ChangeKind.CONTAINED).contains(pod + " in " + billing));
 
-        structure.run(() -> structure.remove(aggregator)).join();
+        structure.run(() -> structure.remove(billing)).join();
         structure.flushAll().join();
 
-        assertEquals(List.of(aggregator), recorder.idsAfterSnapshot(ChangeKind.REMOVED));
-        assertTrue(recorder.membership(ChangeKind.UNCONTAINED).contains(pod + " in " + aggregator));
+        assertEquals(List.of(billing), recorder.idsAfterSnapshot(ChangeKind.REMOVED));
+        assertTrue(recorder.membership(ChangeKind.UNCONTAINED).contains(pod + " in " + billing));
         assertNull(structure.pathOf(pod, DEPLOYMENT).join(), "what it held is on its own");
         assertTrue(recorder.everyPairFollowsItsEnds());
     }
@@ -172,11 +172,11 @@ class ContainTest {
                 DeliveryPolicy.onChange()).join().id(), recorder).join();
         assertEquals(List.of(), recorder.idsInSnapshot(ChangeKind.ADDED));
 
-        structure.run(() -> structure.uncontain(blue, aggregator)).join();
-        contain(green, aggregator, PLACEMENT);
+        structure.run(() -> structure.uncontain(blue, billing)).join();
+        contain(green, billing, PLACEMENT);
         structure.flushAll().join();
 
-        assertEquals(List.of(aggregator), recorder.idsAfterSnapshot(ChangeKind.ADDED));
+        assertEquals(List.of(billing), recorder.idsAfterSnapshot(ChangeKind.ADDED));
     }
 
     private long node(final String name, final String type) {

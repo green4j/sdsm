@@ -8,6 +8,7 @@ import io.github.green4j.sdsm.Materializer;
 import io.github.green4j.sdsm.Observation;
 import io.github.green4j.sdsm.Over;
 import io.github.green4j.sdsm.Source;
+import io.github.green4j.sdsm.example.basic.Show;
 
 import java.util.Collections;
 import java.util.List;
@@ -50,10 +51,6 @@ public final class Shop {
             this.version = up + "/" + replicas + "/" + ready + "/" + rps + "/" + calls;
         }
 
-        public String name() {
-            return name;
-        }
-
         @Override
         public CharSequence externalId() {
             return name;
@@ -93,9 +90,7 @@ public final class Shop {
 
         @Override
         public void rejected(final Service observation, final Throwable reason) {
-            System.err.println("not materialized: "
-                    + (observation != null ? observation.externalId() : "a change of state"));
-            reason.printStackTrace(System.err);
+            Show.rejected(observation, reason);
         }
 
         /**

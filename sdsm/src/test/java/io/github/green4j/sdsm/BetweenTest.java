@@ -152,8 +152,8 @@ class BetweenTest {
 
     @Test
     void shouldFollowTheEndsAsTheyMoveBetweenParents() {
-        final Node blue = structure.submit(() -> structure.createNode("blue", "silo")).join();
-        final Node green = structure.submit(() -> structure.createNode("green", "silo")).join();
+        final Node blue = structure.submit(() -> structure.createNode("blue", "cell")).join();
+        final Node green = structure.submit(() -> structure.createNode("green", "cell")).join();
         for (final Node node : List.of(alpha, beta, gamma)) {
             structure.run(() -> structure.contain(blue.id(), node.id(), "placement")).join();
         }

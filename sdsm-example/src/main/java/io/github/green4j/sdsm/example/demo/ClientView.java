@@ -4,7 +4,6 @@ import io.github.green4j.sdsm.BatchSubscriber;
 import io.github.green4j.sdsm.ChangeCursor;
 import io.github.green4j.sdsm.ObjectKind;
 import io.github.green4j.sdsm.StructureBatch;
-import io.github.green4j.sdsm.ValueType;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -29,25 +28,17 @@ public final class ClientView implements BatchSubscriber {
     private final Map<Long, ClientObject> byId = new HashMap<>();
     private final Map<String, ClientObject> byExternalId = new HashMap<>();
 
-    private long structureVersion;
-    private int batches;
-    private int snapshots;
-    private int records;
-    private Throwable failure;
-
     @Override
     public synchronized void onBatch(final StructureBatch batch) {
         if (batch.isInitialSnapshot()) {
             byId.clear();
             byExternalId.clear();
-            snapshots++;
         }
         final ChangeCursor cursor = batch.cursor();
         while (cursor.next()) {
-            records++;
             switch (cursor.changeKind()) {
                 case ADDED:
-                    added(cursor.objectId(), cursor.objectKind());
+                    byId.putIfAbsent(cursor.objectId(), new ClientObject(cursor.objectId(), cursor.objectKind()));
                     break;
                 case REMOVED:
                     removed(cursor.objectId());
@@ -65,17 +56,15 @@ public final class ClientView implements BatchSubscriber {
                     break;
             }
         }
-        structureVersion = batch.structureVersion();
-        batches++;
     }
 
     @Override
-    public synchronized void onError(final Throwable reason) {
-        failure = reason;
+    public void onError(final Throwable reason) {
+        reason.printStackTrace(System.err);
     }
 
     public synchronized ClientObject byId(final long id) {
-        return byId.get(Long.valueOf(id));
+        return byId.get(id);
     }
 
     public synchronized ClientObject byExternalId(final String externalId) {
@@ -83,13 +72,13 @@ public final class ClientView implements BatchSubscriber {
     }
 
     /**
-     * @param type what to look for, null for everything
+     * @param type what to look for
      * @return the objects of that type, in no particular order
      */
     public synchronized List<ClientObject> ofType(final String type) {
         final List<ClientObject> found = new ArrayList<>();
         for (final ClientObject object : byId.values()) {
-            if (type == null || type.equals(object.type())) {
+            if (type.equals(object.type())) {
                 found.add(object);
             }
         }
@@ -116,59 +105,28 @@ public final class ClientView implements BatchSubscriber {
     public synchronized List<ClientObject> rootsOf(final String axis) {
         final List<ClientObject> roots = new ArrayList<>();
         for (final ClientObject object : byId.values()) {
-            if (axis.equals(object.axis()) && object.groupCount() == 0) {
+            if (axis.equals(object.axis()) && object.groups().isEmpty()) {
                 roots.add(object);
             }
         }
         return roots;
     }
 
-    public synchronized int size() {
-        return byId.size();
-    }
-
-    public synchronized int batches() {
-        return batches;
-    }
-
-    public synchronized int snapshots() {
-        return snapshots;
-    }
-
-    public synchronized int records() {
-        return records;
-    }
-
-    public synchronized long structureVersion() {
-        return structureVersion;
-    }
-
-    public synchronized Throwable failure() {
-        return failure;
-    }
-
-    private void added(final long id, final ObjectKind kind) {
-        final Long key = Long.valueOf(id);
-        if (!byId.containsKey(key)) {
-            byId.put(key, new ClientObject(id, kind));
-        }
-    }
-
     private void removed(final long id) {
-        final ClientObject gone = byId.remove(Long.valueOf(id));
+        final ClientObject gone = byId.remove(id);
         if (gone == null) {
             return;
         }
-        for (int i = 0; i < gone.groupCount(); i++) {
-            final ClientObject group = byId(gone.groupAt(i));
-            if (group != null) {
-                group.lost(id);
+        for (final long group : gone.groups()) {
+            final ClientObject held = byId.get(group);
+            if (held != null) {
+                held.lost(id);
             }
         }
-        for (int i = 0; i < gone.memberCount(); i++) {
-            final ClientObject member = byId(gone.memberAt(i));
-            if (member != null) {
-                member.left(id);
+        for (final long member : gone.members()) {
+            final ClientObject held = byId.get(member);
+            if (held != null) {
+                held.left(id);
             }
         }
         if (gone.externalId() != null) {
@@ -177,18 +135,17 @@ public final class ClientView implements BatchSubscriber {
     }
 
     private void joined(final long memberId, final long groupId) {
-        final ClientObject member = byId(memberId);
-        final ClientObject group = byId(groupId);
-        if (member == null || group == null) {
-            return;
+        final ClientObject member = byId.get(memberId);
+        final ClientObject group = byId.get(groupId);
+        if (member != null && group != null) {
+            member.joined(groupId);
+            group.gained(memberId);
         }
-        member.joined(groupId);
-        group.gained(memberId);
     }
 
     private void left(final long memberId, final long groupId) {
-        final ClientObject member = byId(memberId);
-        final ClientObject group = byId(groupId);
+        final ClientObject member = byId.get(memberId);
+        final ClientObject group = byId.get(groupId);
         if (member != null) {
             member.left(groupId);
         }
@@ -197,36 +154,30 @@ public final class ClientView implements BatchSubscriber {
         }
     }
 
+    // $externalId comes once, when the object does, and never changes
     private void changed(final ChangeCursor cursor) {
-        final ClientObject object = byId(cursor.objectId());
+        final ClientObject object = byId.get(cursor.objectId());
         if (object == null) {
             return;
         }
-        final ValueType valueType = cursor.valueType();
-        final String key = cursor.propertyKey();
-        final String was = "externalId".equals(key) ? object.externalId() : null;
-        object.set(key, valueType, numberOf(cursor, valueType), textOf(cursor, valueType));
-        if (was != null) {
-            byExternalId.remove(was);
-        }
-        if ("externalId".equals(key) && object.externalId() != null) {
+        object.set(cursor.propertyKey(), valueOf(cursor));
+        if ("$externalId".equals(cursor.propertyKey()) && object.externalId() != null) {
             byExternalId.put(object.externalId(), object);
         }
     }
 
-    private static long numberOf(final ChangeCursor cursor, final ValueType valueType) {
-        switch (valueType) {
+    private static Object valueOf(final ChangeCursor cursor) {
+        switch (cursor.valueType()) {
             case LONG:
-            case BOOLEAN:
                 return cursor.longValue();
             case DOUBLE:
-                return Double.doubleToRawLongBits(cursor.doubleValue());
+                return cursor.doubleValue();
+            case BOOLEAN:
+                return cursor.booleanValue();
+            case TEXT:
+                return cursor.textValue().toString();
             default:
-                return 0L;
+                return null;
         }
-    }
-
-    private static String textOf(final ChangeCursor cursor, final ValueType valueType) {
-        return valueType == ValueType.TEXT ? cursor.textValue().toString() : null;
     }
 }

@@ -55,10 +55,10 @@ class BatchJsonTest {
     @Test
     void shouldCarryASnapshotWithEverythingInIt() {
         final Node pod =
-                structure.submit(() -> structure.createNode("aggregator", "pod", "eu-de-1/blue/aggregator")).join();
+                structure.submit(() -> structure.createNode("billing", "pod", "eu-de-1/blue/billing")).join();
         final Node release = structure.submit(() -> structure.createNode("blue", "release")).join();
         structure.run(() -> structure.contain(release.id(), pod.id(), "placement")).join();
-        final Output out = structure.submit(() -> structure.addOutput(pod.id(), "trades", "tcp")).join();
+        final Output out = structure.submit(() -> structure.addOutput(pod.id(), "shipments", "tcp")).join();
         subscribe();
 
         noFailure();
@@ -68,19 +68,18 @@ class BatchJsonTest {
         assertTrue(frame.contains("[\"+\"," + pod.id() + ",\"NODE\"]"), frame);
         assertTrue(frame.contains("[\"p\"," + pod.id() + ","), "one run of its properties: " + frame);
         assertTrue(frame.contains("," + PropertyKeys.EXTERNAL_ID + ",\"eu-de-1"), frame);
-        assertTrue(Json.stringsIn(frame).contains("eu-de-1/blue/aggregator"), frame);
-        assertTrue(frame.contains("\"" + PropertyKeys.EXTERNAL_ID + "\":\"externalId\""), "keys are named: " + frame);
-        assertFalse(frame.contains("\"" + PropertyKeys.ID + "\":\"id\""), "the change's own id: " + frame);
-        assertFalse(frame.contains("\"" + PropertyKeys.KIND + "\":\"kind\""), "the change's own kind: " + frame);
+        assertTrue(Json.stringsIn(frame).contains("eu-de-1/blue/billing"), frame);
+        assertTrue(frame.contains("\"" + PropertyKeys.EXTERNAL_ID + "\":\"$externalId\""), "keys are named: " + frame);
+        assertFalse(frame.contains("\"" + PropertyKeys.ID + "\":\"$id\""), "the change's own id: " + frame);
         assertTrue(frame.contains("[\"c\"," + pod.id() + "," + release.id() + "]"), frame);
         assertTrue(frame.contains("[\"+\"," + out.id() + ",\"OUTPUT\"]"), frame);
-        assertFalse(Json.stringsIn(frame).contains("eu-de-1/blue/aggregator>trades"),
+        assertFalse(Json.stringsIn(frame).contains("eu-de-1/blue/billing>shipments"),
                 "a port's external id is its node's, its side and its name: " + frame);
     }
 
     @Test
     void shouldCarryEachValueAsWhatItIs() {
-        final Node pod = structure.submit(() -> structure.createNode("aggregator", "pod")).join();
+        final Node pod = structure.submit(() -> structure.createNode("billing", "pod")).join();
         subscribe();
         final int pods = structure.propertyKeys().idOf("pods");
         final int rate = structure.propertyKeys().idOf("inRate");
@@ -97,7 +96,7 @@ class BatchJsonTest {
         assertEquals(2, sent.size(), "one snapshot and one delta");
         assertTrue(frame.contains("\"snapshot\":false"), frame);
         assertTrue(frame.contains("," + pods + ",3"), frame);
-        assertTrue(frame.contains("," + rate + ",\"12000.5\""), frame);
+        assertTrue(frame.contains("," + rate + ",12000.5"), frame);
         assertTrue(frame.contains("," + live + ",true"), frame);
         assertTrue(frame.endsWith("\"keys\":{\"" + pods + "\":\"pods\",\"" + rate + "\":\"inRate\",\""
                 + live + "\":\"live\"}}"), "only the keys it uses: " + frame);
@@ -117,7 +116,7 @@ class BatchJsonTest {
     }
 
     /**
-     * Text is whatever a source wrote, so a frame quotes it rather than splicing it in.
+     * Text is whatever a source wrote, so a frame payments it rather than splicing it in.
      */
     @Test
     void shouldQuoteWhateverTextHolds() {

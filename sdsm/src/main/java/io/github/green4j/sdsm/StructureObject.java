@@ -162,7 +162,6 @@ public abstract class StructureObject {
                 return ValueType.LONG;
             case PropertyKeys.NAME:
             case PropertyKeys.TYPE:
-            case PropertyKeys.KIND:
                 return ValueType.TEXT;
             case PropertyKeys.EXTERNAL_ID:
                 return externalId == null ? ValueType.ABSENT : ValueType.TEXT;
@@ -192,8 +191,6 @@ public abstract class StructureObject {
                 return name;
             case PropertyKeys.TYPE:
                 return type;
-            case PropertyKeys.KIND:
-                return kind().name();
             case PropertyKeys.EXTERNAL_ID:
                 return externalId;
             default:

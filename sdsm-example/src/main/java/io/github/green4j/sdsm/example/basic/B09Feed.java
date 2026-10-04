@@ -76,9 +76,7 @@ public final class B09Feed {
 
         @Override
         public void rejected(final Pod observation, final Throwable reason) {
-            System.err.println("not materialized: "
-                    + (observation != null ? observation.externalId() : "a change of state"));
-            reason.printStackTrace(System.err);
+            Show.rejected(observation, reason);
         }
 
         /**
@@ -190,14 +188,14 @@ public final class B09Feed {
 
     private static void print(final Structure structure, final Consumer<String> out) {
         for (final Map<String, Object> pod : pods(structure)) {
-            out.accept("  " + pod.get("name") + " " + pod.get("status"));
+            out.accept("  " + pod.get("$name") + " " + pod.get("status"));
         }
-        final Map<String, Object> cluster = structure.query("node[type=cluster]").join().get(0);
+        final Map<String, Object> cluster = structure.query("node[$type=cluster]").join().get(0);
         out.accept("  cluster watch=" + cluster.get("watch"));
     }
 
     private static List<Map<String, Object>> pods(final Structure structure) {
-        return structure.query("node[type=pod]").join();
+        return structure.query("node[$type=pod]").join();
     }
 
     private B09Feed() {

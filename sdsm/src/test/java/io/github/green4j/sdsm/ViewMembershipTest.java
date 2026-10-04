@@ -54,11 +54,11 @@ class ViewMembershipTest {
     @Test
     void shouldHoldANodeOnceItHoldsOnAnAxis() {
         final Node region = structure.submit(() -> structure.createNode("eu", "region")).join();
-        final Node silo = structure.submit(() -> structure.createNode("silo-1", "silo")).join();
-        subscribeTo(structure.createView("holding", "node[axis=placement]", null,
+        final Node cell = structure.submit(() -> structure.createNode("cell-1", "cell")).join();
+        subscribeTo(structure.createView("holding", "node[$axis=placement]", null,
                 DeliveryPolicy.onChange()).join());
 
-        structure.run(() -> structure.contain(region.id(), silo.id(), "placement")).join();
+        structure.run(() -> structure.contain(region.id(), cell.id(), "placement")).join();
 
         assertEquals(List.of(region.id()), recorder.idsAfterSnapshot(ChangeKind.ADDED));
     }
@@ -92,7 +92,7 @@ class ViewMembershipTest {
 
         assertEquals(List.of(alpha.id()), recorder.idsAfterSnapshot(ChangeKind.REMOVED),
                 "left the view");
-        assertEquals(1, structure.matchedObjectIds("*[id=" + alpha.id() + "]").join().length,
+        assertEquals(1, structure.matchedObjectIds("*[$id=" + alpha.id() + "]").join().length,
                 "but not the structure");
     }
 
@@ -109,7 +109,7 @@ class ViewMembershipTest {
 
         subscribeTo(liveServices());
 
-        assertEquals(List.of("id", "name", "type", "kind", "status"), recorder.keysInSnapshot());
+        assertEquals(List.of("$id", "$name", "$type", "status"), recorder.keysInSnapshot());
     }
 
     @Test
